@@ -1,5 +1,7 @@
 package com.app.bideo.domain.member;
 
+import com.app.bideo.common.enumeration.MemberRole;
+import com.app.bideo.common.enumeration.MemberStatus;
 import lombok.*;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -19,7 +21,7 @@ public class MemberVO {
     private LocalDate birthDate;
     private String bio;
     private String profileImage;
-    private String role;
+    private MemberRole role;
     private Boolean creatorVerified;
     private Boolean sellerVerified;
     private String creatorTier;
@@ -28,7 +30,7 @@ public class MemberVO {
     private Integer galleryCount;
     private String phoneNumber;
     private LocalDateTime lastLoginDatetime;
-    private String status;
+    private MemberStatus status;
     private LocalDateTime createdDatetime;
     private LocalDateTime updatedDatetime;
     private LocalDateTime deletedDatetime;
