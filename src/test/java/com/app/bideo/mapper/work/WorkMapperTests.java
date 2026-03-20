@@ -29,7 +29,6 @@ public class WorkMapperTests {
 
         workMapper.insertTestMember(Map.of(
                 "email", email,
-                "loginId", "work_login_" + suffix,
                 "password", "1234",
                 "nickname", nickname,
                 "role", "USER",

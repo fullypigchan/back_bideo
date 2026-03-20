@@ -35,7 +35,6 @@ create table tbl_member
 comment on table tbl_member is '회원';
 comment on column tbl_member.id is '회원 번호 (PK)';
 comment on column tbl_member.email is '이메일 (로그인 + 아이디찾기)';
-comment on column tbl_member.login_id is '로그인 아이디';
 comment on column tbl_member.password is '비밀번호 (bcrypt, 소셜전용은 NULL)';
 comment on column tbl_member.nickname is '닉네임';
 comment on column tbl_member.real_name is '실명';

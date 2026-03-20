@@ -6,9 +6,9 @@
 
     <insert id="insertTestMember">
         insert into tbl_member (
-            email, login_id, password, nickname, role, status, created_datetime, updated_datetime
+            email, password, nickname, role, status, created_datetime, updated_datetime
         ) values (
-            #{email}, #{loginId}, #{password}, #{nickname}, #{role}, #{status}, now(), now()
+            #{email}, #{password}, #{nickname}, #{role}, #{status}, now(), now()
         )
     </insert>
 
