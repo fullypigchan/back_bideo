@@ -242,4 +242,9 @@ window.addEventListener('load', () => {
 
   window.showSignupModal = showSignupModal;
   window.closeSignupModal = closeSignupModal;
+  window.handleSignupStep1Submit = handleSignupStep1Submit;
+  window.handleSignupSubmit = handleSignupSubmit;
+  window.showSignupStep1View = showSignupStep1View;
+  window.showSignupStep2View = showSignupStep2View;
+  window.togglePasswordTip = togglePasswordTip;
 });

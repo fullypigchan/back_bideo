@@ -19,17 +19,24 @@ class TemplateCleanupTest {
         assertFalse(resourceExists("templates/main/sign-up.html"));
 
         String mainTemplate = readResource("templates/main/main.html");
+        String layoutTemplate = readResource("templates/common/layout.html");
         String introTemplate = readResource("templates/main/intro-main.html");
 
-        assertTrue(mainTemplate.contains("../../static/css/main/auth-modal.css"));
-        assertTrue(mainTemplate.contains("../../static/css/main/signup-modal.css"));
-        assertTrue(mainTemplate.contains("../../static/js/main/auth-modal.js"));
-        assertTrue(mainTemplate.contains("../../static/js/main/signup-modal.js"));
+        assertTrue(mainTemplate.contains("layout:decorate=\"~{/common/layout}\""));
 
-        assertTrue(introTemplate.contains("../../static/css/main/auth-modal.css"));
-        assertTrue(introTemplate.contains("../../static/css/main/signup-modal.css"));
-        assertTrue(introTemplate.contains("../../static/js/main/auth-modal.js"));
-        assertTrue(introTemplate.contains("../../static/js/main/signup-modal.js"));
+        assertTrue(layoutTemplate.contains("/css/main/modal-shared.css"));
+        assertTrue(layoutTemplate.contains("/css/main/auth-modal.css"));
+        assertTrue(layoutTemplate.contains("/css/main/signup-modal.css"));
+        assertTrue(layoutTemplate.contains("/js/main/modal-shared.js"));
+        assertTrue(layoutTemplate.contains("/js/main/auth-modal.js"));
+        assertTrue(layoutTemplate.contains("/js/main/signup-modal.js"));
+
+        assertTrue(introTemplate.contains("/css/main/modal-shared.css"));
+        assertTrue(introTemplate.contains("/css/main/auth-modal.css"));
+        assertTrue(introTemplate.contains("/css/main/signup-modal.css"));
+        assertTrue(introTemplate.contains("/js/main/modal-shared.js"));
+        assertTrue(introTemplate.contains("/js/main/auth-modal.js"));
+        assertTrue(introTemplate.contains("/js/main/signup-modal.js"));
     }
 
     private boolean resourceExists(String path) {
