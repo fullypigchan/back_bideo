@@ -663,4 +663,14 @@ window.addEventListener('load', () => {
 
   window.showAuthModal = showAuthModal;
   window.closeAuthModal = closeAuthModal;
+  window.redirectToOAuthProvider = redirectToOAuthProvider;
+  window.handleLoginSubmit = handleLoginSubmit;
+  window.showAuthLoginView = showAuthLoginView;
+  window.showAuthFindIdView = showAuthFindIdView;
+  window.showAuthFindPasswordView = showAuthFindPasswordView;
+  window.handleFindEmailSubmit = handleFindEmailSubmit;
+  window.handleFindPasswordSubmit = handleFindPasswordSubmit;
+  window.handleResetPasswordSubmit = handleResetPasswordSubmit;
+  window.sendPhoneVerificationCode = sendPhoneVerificationCode;
+  window.sendEmailVerificationCode = sendEmailVerificationCode;
 });
