@@ -126,24 +126,54 @@ window.addEventListener('load', () => {
     );
   }
 
-// ─── 검색 제안 데이터 (더미) ─────────────────────────
-  const recentSearches = createThumbEntries([
-    '집 분위기 바꾸기: 양치식물', 'steak garnish', '감성 인테리어', '네일 아트 디자인', '홈카페 레시피',
-    '여행 사진 구도', '미니멀 패션', '수채화 그리기', '건강한 아침식사', '캘리그라피 연습'
-  ], 500);
-  const recommendedIdeas = createThumbEntries([
-    '대시보드 ui', '모던 건축', '브런치 카페', '빈티지 포스터',
-    '일러스트 캐릭터', '플랜트 인테리어', '북유럽 스타일', '감성 사진'
-  ], 600);
-  const trendingSearches = createThumbEntries([
-    '청순', '가을 코디', '헤어스타일', '셀프 인테리어',
-    '다이어트 식단', '웨딩 데코', '타투 디자인', '캠핑 장비'
-  ], 700);
+// ─── 검색 제안 데이터 (API) ─────────────────────────
+  async function fetchRecentSearches() {
+    if (!IS_LOGGED_IN) return [];
+    try {
+      const res = await fetch('/api/search/recent');
+      if (!res.ok) return [];
+      return res.json();
+    } catch (e) { return []; }
+  }
+
+  async function fetchRecommendedGalleries() {
+    try {
+      const res = await fetch('/api/search/recommended-galleries');
+      if (!res.ok) return [];
+      return res.json();
+    } catch (e) { return []; }
+  }
+
+  async function fetchTrendingKeywords() {
+    try {
+      const res = await fetch('/api/search/trending');
+      if (!res.ok) return [];
+      return res.json();
+    } catch (e) { return []; }
+  }
+
+  async function saveSearchHistory(keyword) {
+    if (!IS_LOGGED_IN || !keyword) return;
+    try {
+      await fetch('/api/search/recent', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({keyword: keyword})
+      });
+    } catch (e) { /* ignore */ }
+  }
+
+  async function deleteSearchHistory(id) {
+    if (!id) return;
+    try {
+      await fetch('/api/search/recent/' + id, {method: 'DELETE'});
+    } catch (e) { /* ignore */ }
+  }
 
 // ─── 검색바 인터랙션 ───────────────────────────────
   let searchSuggestionsCreated = false;
 
-  function createSearchSuggestions() {
+  async function createSearchSuggestions() {
     const searchContainer = document.getElementById('searchBoxContainer');
     if (!searchContainer || searchSuggestionsCreated) return;
 
@@ -158,44 +188,62 @@ window.addEventListener('load', () => {
     dropdown.id = 'searchSuggestions';
     dropdown.className = 'search-suggest';
 
-    // 최근 검색 기록 섹션
-    let html = '<div class="search-suggest__section">' +
-        '<div class="search-suggest__heading">최근 검색 기록</div>' +
-        '<div class="search-suggest__grid">';
-    recentSearches.forEach(function (item, idx) {
-      html += '<div class="search-suggest__item" data-recent-idx="' + idx + '">' +
-          '<img class="search-suggest__thumb" src="' + item.img + '" alt="" />' +
-          '<span class="search-suggest__text">' + item.text + '</span>' +
-          '<button class="search-suggest__delete" type="button" data-action="remove-recent-search" aria-label="삭제">' +
-          '<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="m12 13.41 8.3 8.3 1.4-1.42L13.42 12l8.3-8.3-1.42-1.4-8.3 8.28-8.3-8.3L2.3 3.7l8.28 8.3-8.3 8.3 1.42 1.4z"></path></svg>' +
-          '</button>' +
-          '</div>';
-    });
-    html += '</div></div>';
+    // API 데이터 로드
+    const [recentData, galleryData, trendingData] = await Promise.all([
+      fetchRecentSearches(),
+      fetchRecommendedGalleries(),
+      fetchTrendingKeywords()
+    ]);
+
+    let html = '';
+
+    // 최근 검색 기록 섹션 (로그인 시에만)
+    if (IS_LOGGED_IN && recentData.length > 0) {
+      html += '<div class="search-suggest__section" id="recentSearchSection">' +
+          '<div class="search-suggest__heading">최근 검색 기록</div>' +
+          '<div class="search-suggest__grid">';
+      recentData.forEach(function (item) {
+        const thumb = createArtworkDataUri(item.keyword, item.id || 0, 236, 236);
+        html += '<div class="search-suggest__item" data-search-id="' + item.id + '">' +
+            '<img class="search-suggest__thumb" src="' + thumb + '" alt="" />' +
+            '<span class="search-suggest__text">' + item.keyword + '</span>' +
+            '<button class="search-suggest__delete" type="button" data-action="remove-recent-search" aria-label="삭제">' +
+            '<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="m12 13.41 8.3 8.3 1.4-1.42L13.42 12l8.3-8.3-1.42-1.4-8.3 8.28-8.3-8.3L2.3 3.7l8.28 8.3-8.3 8.3 1.42 1.4z"></path></svg>' +
+            '</button>' +
+            '</div>';
+      });
+      html += '</div></div>';
+    }
 
     // 추천 예술관 섹션
-    html += '<div class="search-suggest__section">' +
-        '<div class="search-suggest__heading">추천 예술관</div>' +
-        '<div class="search-suggest__grid">';
-    recommendedIdeas.forEach(function (item) {
-      html += '<div class="search-suggest__item">' +
-          '<img class="search-suggest__thumb" src="' + item.img + '" alt="" />' +
-          '<span class="search-suggest__text">' + item.text + '</span>' +
-          '</div>';
-    });
-    html += '</div></div>';
+    if (galleryData.length > 0) {
+      html += '<div class="search-suggest__section">' +
+          '<div class="search-suggest__heading">추천 예술관</div>' +
+          '<div class="search-suggest__grid">';
+      galleryData.forEach(function (item) {
+        const thumb = item.coverImage || createArtworkDataUri(item.title, item.id || 0, 236, 236);
+        html += '<div class="search-suggest__item" data-gallery-id="' + item.id + '">' +
+            '<img class="search-suggest__thumb" src="' + thumb + '" alt="" />' +
+            '<span class="search-suggest__text">' + item.title + '</span>' +
+            '</div>';
+      });
+      html += '</div></div>';
+    }
 
     // 인기 검색어 섹션
-    html += '<div class="search-suggest__section">' +
-        '<div class="search-suggest__heading">BIDEO 인기 탐색</div>' +
-        '<div class="search-suggest__grid">';
-    trendingSearches.forEach(function (item) {
-      html += '<div class="search-suggest__item search-suggest__item--small">' +
-          '<img class="search-suggest__thumb" src="' + item.img + '" alt="" />' +
-          '<span class="search-suggest__text">' + item.text + '</span>' +
-          '</div>';
-    });
-    html += '</div></div>';
+    if (trendingData.length > 0) {
+      html += '<div class="search-suggest__section">' +
+          '<div class="search-suggest__heading">BIDEO 인기 탐색</div>' +
+          '<div class="search-suggest__grid">';
+      trendingData.forEach(function (item, idx) {
+        const thumb = createArtworkDataUri(item.keyword, 700 + idx, 236, 236);
+        html += '<div class="search-suggest__item search-suggest__item--small">' +
+            '<img class="search-suggest__thumb" src="' + thumb + '" alt="" />' +
+            '<span class="search-suggest__text">' + item.keyword + '</span>' +
+            '</div>';
+      });
+      html += '</div></div>';
+    }
 
     dropdown.innerHTML = html;
     const header = document.getElementById('HeaderContent');
@@ -234,6 +282,8 @@ window.addEventListener('load', () => {
   function removeRecentSearch(btn) {
     const item = btn.closest('.search-suggest__item');
     if (item) {
+      const searchId = item.getAttribute('data-search-id');
+      if (searchId) deleteSearchHistory(searchId);
       item.style.transition = 'opacity 0.2s, transform 0.2s';
       item.style.opacity = '0';
       item.style.transform = 'scale(0.8)';
@@ -254,6 +304,7 @@ window.addEventListener('load', () => {
     const masonryEl = document.getElementById('masonry');
     if (masonryEl) masonryEl.innerHTML = '';
     hideSearchSuggestions();
+    if (currentKeyword) saveSearchHistory(currentKeyword);
     await loadMorePins();
   }
 
@@ -266,6 +317,10 @@ window.addEventListener('load', () => {
     createSearchSuggestions();
 
     searchInput.addEventListener('focus', function () {
+      // 포커스 시 드롭다운 내용 갱신 (검색 기록 변동 반영)
+      if (searchSuggestionsCreated) {
+        refreshSearchSuggestions();
+      }
       showSearchSuggestions();
     });
 
@@ -289,10 +344,17 @@ window.addEventListener('load', () => {
       }
     });
 
-    // 검색 제안 항목 클릭 시 검색 실행
+    // 검색 제안 항목 클릭 시 검색 실행 / 삭제 버튼 처리
     searchContainer.addEventListener('click', function (e) {
+      const deleteBtn = e.target.closest('[data-action="remove-recent-search"]');
+      if (deleteBtn) {
+        e.preventDefault();
+        e.stopPropagation();
+        removeRecentSearch(deleteBtn);
+        return;
+      }
       const item = e.target.closest('.search-suggest__item');
-      if (!item || e.target.closest('[data-action="remove-recent-search"]')) return;
+      if (!item) return;
       const text = item.querySelector('.search-suggest__text');
       if (text) {
         searchInput.value = text.textContent;
@@ -302,12 +364,72 @@ window.addEventListener('load', () => {
     });
 
     // 오버레이 클릭 시 닫기
-    const overlay = document.getElementById('searchOverlay');
-    if (overlay) {
-      overlay.addEventListener('click', function () {
+    document.addEventListener('click', function (e) {
+      const overlay = document.getElementById('searchOverlay');
+      if (e.target === overlay) {
         searchInput.blur();
+      }
+    });
+  }
+
+  async function refreshSearchSuggestions() {
+    const dropdown = document.getElementById('searchSuggestions');
+    if (!dropdown) return;
+
+    const [recentData, galleryData, trendingData] = await Promise.all([
+      fetchRecentSearches(),
+      fetchRecommendedGalleries(),
+      fetchTrendingKeywords()
+    ]);
+
+    let html = '';
+
+    if (IS_LOGGED_IN && recentData.length > 0) {
+      html += '<div class="search-suggest__section" id="recentSearchSection">' +
+          '<div class="search-suggest__heading">최근 검색 기록</div>' +
+          '<div class="search-suggest__grid">';
+      recentData.forEach(function (item) {
+        const thumb = createArtworkDataUri(item.keyword, item.id || 0, 236, 236);
+        html += '<div class="search-suggest__item" data-search-id="' + item.id + '">' +
+            '<img class="search-suggest__thumb" src="' + thumb + '" alt="" />' +
+            '<span class="search-suggest__text">' + item.keyword + '</span>' +
+            '<button class="search-suggest__delete" type="button" data-action="remove-recent-search" aria-label="삭제">' +
+            '<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="m12 13.41 8.3 8.3 1.4-1.42L13.42 12l8.3-8.3-1.42-1.4-8.3 8.28-8.3-8.3L2.3 3.7l8.28 8.3-8.3 8.3 1.42 1.4z"></path></svg>' +
+            '</button>' +
+            '</div>';
       });
+      html += '</div></div>';
     }
+
+    if (galleryData.length > 0) {
+      html += '<div class="search-suggest__section">' +
+          '<div class="search-suggest__heading">추천 예술관</div>' +
+          '<div class="search-suggest__grid">';
+      galleryData.forEach(function (item) {
+        const thumb = item.coverImage || createArtworkDataUri(item.title, item.id || 0, 236, 236);
+        html += '<div class="search-suggest__item" data-gallery-id="' + item.id + '">' +
+            '<img class="search-suggest__thumb" src="' + thumb + '" alt="" />' +
+            '<span class="search-suggest__text">' + item.title + '</span>' +
+            '</div>';
+      });
+      html += '</div></div>';
+    }
+
+    if (trendingData.length > 0) {
+      html += '<div class="search-suggest__section">' +
+          '<div class="search-suggest__heading">BIDEO 인기 탐색</div>' +
+          '<div class="search-suggest__grid">';
+      trendingData.forEach(function (item, idx) {
+        const thumb = createArtworkDataUri(item.keyword, 700 + idx, 236, 236);
+        html += '<div class="search-suggest__item search-suggest__item--small">' +
+            '<img class="search-suggest__thumb" src="' + thumb + '" alt="" />' +
+            '<span class="search-suggest__text">' + item.keyword + '</span>' +
+            '</div>';
+      });
+      html += '</div></div>';
+    }
+
+    dropdown.innerHTML = html;
   }
 
   /* 사이드 네비 관련 함수는 navigation.js 참조 */
@@ -414,25 +536,6 @@ window.addEventListener('load', () => {
   function initGuestMode() {
     document.body.classList.add('guest-mode');
 
-    // 메인 페이지('/')에서만 사이드바 숨기기 및 레이아웃 조정
-    const isMainPage = window.location.pathname === '/';
-    if (isMainPage) {
-      // 사이드바 숨기기
-      const sidebar = document.getElementById('VerticalNavContent');
-      if (sidebar) sidebar.style.display = 'none';
-
-      // 헤더 left 조정
-      const header = document.getElementById('HeaderContent');
-      if (header) header.style.left = '0';
-
-      // appViewport 패딩 조정 (사이드바 없음)
-      const viewport = document.querySelector('.appViewport');
-      if (viewport) {
-        viewport.style.paddingLeft = '24px';
-        viewport.style.paddingRight = '24px';
-      }
-    }
-
     // 프로필 + 계정 드롭다운 숨기고 로그인 버튼 삽입
     const profileBtn = document.querySelector('[aria-label="내 프로필"]');
     const accountBtn = document.querySelector('[aria-label="계정"]');
@@ -453,7 +556,7 @@ window.addEventListener('load', () => {
     }
 
     // 하단 배너 (메인 페이지에서만)
-    if (isMainPage) {
+    if (window.location.pathname === '/') {
       const banner = document.createElement('div');
       banner.className = 'guest-bottom-banner';
       banner.innerHTML =

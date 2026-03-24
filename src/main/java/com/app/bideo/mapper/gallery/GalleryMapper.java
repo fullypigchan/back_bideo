@@ -36,4 +36,6 @@ public interface GalleryMapper {
     int increaseGalleryCommentCount(@Param("galleryId") Long galleryId);
 
     List<CommentResponseDTO> selectGalleryCommentsByGalleryId(@Param("galleryId") Long galleryId);
+
+    List<GalleryListResponseDTO> selectRecommendedGalleries();
 }

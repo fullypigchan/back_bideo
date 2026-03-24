@@ -69,4 +69,8 @@ public class GalleryDAO {
     public List<CommentResponseDTO> findCommentsByGalleryId(Long galleryId) {
         return galleryMapper.selectGalleryCommentsByGalleryId(galleryId);
     }
+
+    public List<GalleryListResponseDTO> findRecommended() {
+        return galleryMapper.selectRecommendedGalleries();
+    }
 }
