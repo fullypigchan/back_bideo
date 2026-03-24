@@ -52,4 +52,5 @@ public interface GalleryMapper {
     int decreaseGalleryLikeCount(@Param("galleryId") Long galleryId);
 
     Integer selectGalleryLikeCount(@Param("galleryId") Long galleryId);
+
 }

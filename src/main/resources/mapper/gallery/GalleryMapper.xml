@@ -203,6 +203,7 @@
         where id = #{galleryId}
           and deleted_datetime is null
           and status != 'DELETED'
+
     </select>
 
 </mapper>
