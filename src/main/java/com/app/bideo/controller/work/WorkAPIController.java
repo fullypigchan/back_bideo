@@ -1,6 +1,7 @@
 package com.app.bideo.controller.work;
 
 import com.app.bideo.dto.common.PageResponseDTO;
+import com.app.bideo.dto.common.LikeToggleResponseDTO;
 import com.app.bideo.dto.interaction.CommentCreateRequestDTO;
 import com.app.bideo.dto.work.WorkCreateRequestDTO;
 import com.app.bideo.dto.work.WorkDetailResponseDTO;
@@ -79,6 +80,14 @@ public class WorkAPIController {
             @RequestBody CommentCreateRequestDTO requestDTO
     ) {
         return workService.writeComment(id, memberId, requestDTO.getContent());
+    }
+
+    @PostMapping("/{id}/likes")
+    public LikeToggleResponseDTO toggleLike(
+            @PathVariable Long id,
+            @RequestParam(required = false) Long memberId
+    ) {
+        return workService.toggleLike(id, memberId);
     }
 
     // 작품 삭제

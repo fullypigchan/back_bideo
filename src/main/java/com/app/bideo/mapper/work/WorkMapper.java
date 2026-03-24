@@ -62,4 +62,16 @@ public interface WorkMapper {
     int increaseWorkCommentCount(@Param("workId") Long workId);
 
     List<CommentResponseDTO> selectWorkCommentsByWorkId(@Param("workId") Long workId);
+
+    boolean existsWorkLike(@Param("memberId") Long memberId, @Param("workId") Long workId);
+
+    void insertWorkLike(@Param("memberId") Long memberId, @Param("workId") Long workId);
+
+    int deleteWorkLike(@Param("memberId") Long memberId, @Param("workId") Long workId);
+
+    int increaseWorkLikeCount(@Param("workId") Long workId);
+
+    int decreaseWorkLikeCount(@Param("workId") Long workId);
+
+    Integer selectWorkLikeCount(@Param("workId") Long workId);
 }

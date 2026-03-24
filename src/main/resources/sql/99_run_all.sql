@@ -24,7 +24,8 @@
 \ir tbl_work_tag.sql
 \ir tbl_gallery.sql
 \ir tbl_contest.sql
-\ir tbl_like.sql
+\ir tbl_work_like.sql
+\ir tbl_gallery_like.sql
 \ir tbl_bookmark.sql
 \ir tbl_comment.sql
 \ir tbl_comment_like.sql
