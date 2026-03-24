@@ -765,8 +765,6 @@ function openGalleryCloseupModal(trigger) {
   const likeCountElement = document.getElementById('galleryCloseupLikeCount');
   const viewCountElement = document.getElementById('galleryCloseupViewCount');
   const descriptionElement = document.getElementById('galleryCloseupDescription');
-  const commentAuthorElement = document.getElementById('galleryCloseupCommentAuthor');
-  const commentTextElement = document.getElementById('galleryCloseupCommentText');
 
   currentGalleryDetail = {
     id: galleryId,
@@ -787,11 +785,6 @@ function openGalleryCloseupModal(trigger) {
   if (descriptionElement) {
     descriptionElement.textContent = description || `${owner}님의 예술관입니다. 작품 ${workCount.toLocaleString('ko-KR')}개, 좋아요 ${likeCount.toLocaleString('ko-KR')}개, 조회수 ${viewCount.toLocaleString('ko-KR')}회를 기록했습니다.`;
   }
-  if (commentAuthorElement) commentAuthorElement.textContent = owner;
-  if (commentTextElement) {
-    commentTextElement.textContent = `${title} 예술관의 대표 반응을 확인해보세요.`;
-  }
-
   if (image && fallback) {
     if (cover) {
       image.src = cover;
@@ -807,6 +800,57 @@ function openGalleryCloseupModal(trigger) {
 
   closeModal('galleryListModal');
   document.getElementById('galleryCloseupModal')?.classList.add('active');
+  loadGalleryComments(galleryId);
+}
+
+function renderGalleryComments(comments) {
+  const commentsContainer = document.getElementById('galleryCloseupCommentsContainer');
+  if (!commentsContainer) return;
+
+  if (!comments || !comments.length) {
+    commentsContainer.innerHTML = `
+      <div class="closeup__comment-item">
+        <img class="closeup__comment-avatar" src="/images/BIDEO_LOGO/BIDEO_favicon.png" alt="empty">
+        <div class="closeup__comment-body">
+          <div class="closeup__comment-meta">
+            <span class="closeup__comment-author">BIDEO</span>
+            <span class="closeup__comment-time">안내</span>
+          </div>
+          <p class="closeup__comment-text">아직 댓글이 없습니다.</p>
+        </div>
+      </div>
+    `;
+    return;
+  }
+
+  commentsContainer.innerHTML = comments.map((comment) => `
+    <div class="closeup__comment-item">
+      <img class="closeup__comment-avatar" src="${comment.memberProfileImage || '/images/BIDEO_LOGO/BIDEO_favicon.png'}" alt="${escapeHtml(comment.memberNickname || 'user')}">
+      <div class="closeup__comment-body">
+        <div class="closeup__comment-meta">
+          <span class="closeup__comment-author">${escapeHtml(comment.memberNickname || 'user')}</span>
+          <span class="closeup__comment-time">${formatWorkDate(comment.createdDatetime)}</span>
+        </div>
+        <p class="closeup__comment-text">${escapeHtml(comment.content || '')}</p>
+      </div>
+    </div>
+  `).join('');
+}
+
+async function loadGalleryComments(galleryId) {
+  if (!galleryId) return;
+
+  try {
+    const response = await fetch(`/api/galleries/${galleryId}/comments`);
+    if (!response.ok) {
+      throw new Error('예술관 댓글을 불러오지 못했습니다.');
+    }
+
+    const comments = await response.json();
+    renderGalleryComments(comments);
+  } catch (error) {
+    renderGalleryComments([]);
+  }
 }
 
 function openGalleryActionModal(event) {
@@ -918,6 +962,45 @@ async function submitGalleryEdit() {
     window.location.reload();
   } catch (error) {
     alert(error.message || '예술관 수정에 실패했습니다.');
+  }
+}
+
+async function submitGalleryComment() {
+  if (!currentGalleryDetail?.id) return;
+
+  const input = document.getElementById('galleryCloseupCommentInput');
+  if (!input) return;
+
+  const content = input.textContent?.trim() || '';
+  if (!content) {
+    alert('댓글 내용을 입력해주세요.');
+    input.focus();
+    return;
+  }
+
+  try {
+    const response = await fetch(`/api/galleries/${currentGalleryDetail.id}/comments`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        targetType: 'GALLERY',
+        targetId: currentGalleryDetail.id,
+        content
+      })
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(errorText || '예술관 댓글 등록에 실패했습니다.');
+    }
+
+    const comments = await response.json();
+    input.textContent = '';
+    renderGalleryComments(comments);
+  } catch (error) {
+    alert(error.message || '예술관 댓글 등록에 실패했습니다.');
   }
 }
 
@@ -1278,6 +1361,8 @@ document.addEventListener('DOMContentLoaded', () => {
   const workDetailCommentSubmit = document.getElementById('workDetailCommentSubmit');
   const galleryEditUploadArea = document.getElementById('galleryEditUploadArea');
   const galleryEditFileInput = document.getElementById('galleryEditFileInput');
+  const galleryCloseupCommentInput = document.getElementById('galleryCloseupCommentInput');
+  const galleryCloseupCommentSubmit = document.getElementById('galleryCloseupCommentSubmit');
 
   if (workEditUploadArea && workEditFileInput) {
     workEditUploadArea.addEventListener('click', (event) => {
@@ -1394,6 +1479,14 @@ document.addEventListener('DOMContentLoaded', () => {
     if (event.key === 'Enter') {
       event.preventDefault();
       submitWorkComment();
+    }
+  });
+
+  galleryCloseupCommentSubmit?.addEventListener('click', submitGalleryComment);
+  galleryCloseupCommentInput?.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter' && !event.shiftKey) {
+      event.preventDefault();
+      submitGalleryComment();
     }
   });
 

@@ -96,4 +96,46 @@
         where id = #{galleryId}
     </update>
 
+    <insert id="insertGalleryComment" parameterType="com.app.bideo.domain.interaction.CommentVO" useGeneratedKeys="true" keyProperty="id">
+        insert into tbl_comment (
+            member_id, target_type, target_id, parent_id, content, is_pinned, like_count
+        ) values (
+            #{memberId}, #{targetType}, #{targetId}, #{parentId}, #{content}, coalesce(#{isPinned}, false), coalesce(#{likeCount}, 0)
+        )
+    </insert>
+
+    <update id="increaseGalleryCommentCount">
+        update tbl_gallery
+        set
+            comment_count = coalesce(comment_count, 0) + 1,
+            updated_datetime = now()
+        where id = #{galleryId}
+          and deleted_datetime is null
+          and status != 'DELETED'
+    </update>
+
+    <select id="selectGalleryCommentsByGalleryId" resultType="CommentResponseDTO">
+        select
+            c.id,
+            c.member_id,
+            m.nickname as member_nickname,
+            m.profile_image as member_profile_image,
+            c.target_type,
+            c.target_id,
+            c.parent_id,
+            c.content,
+            c.is_pinned,
+            c.like_count,
+            false as is_liked,
+            c.created_datetime,
+            c.updated_datetime
+        from tbl_comment c
+        left join tbl_member m on c.member_id = m.id
+        where c.target_type = 'GALLERY'
+          and c.target_id = #{galleryId}
+          and c.parent_id is null
+          and c.deleted_datetime is null
+        order by c.created_datetime asc, c.id asc
+    </select>
+
 </mapper>

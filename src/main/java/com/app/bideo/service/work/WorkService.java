@@ -23,23 +23,17 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Objects;
-import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
 @Transactional(rollbackFor = Exception.class)
 public class WorkService {
-
-    private static final Path WORK_UPLOAD_DIR = Paths.get("uploads", "work");
 
     private final WorkDAO workDAO;
     private final GalleryDAO galleryDAO;
@@ -313,26 +307,21 @@ public class WorkService {
         throw new IllegalStateException("login required");
     }
 
-    // 업로드한 파일을 서버 디스크에 저장하고 접근 가능한 URL을 DB에 남긴다.
+    // 업로드한 파일을 data URL 형태로 DB에 직접 저장한다.
     private void saveMediaFile(Long workId, MultipartFile mediaFile) {
         if (mediaFile == null || mediaFile.isEmpty()) {
             return;
         }
 
         try {
-            Files.createDirectories(WORK_UPLOAD_DIR);
-
-            String originalName = mediaFile.getOriginalFilename() != null ? mediaFile.getOriginalFilename() : "media_file";
-            String savedName = UUID.randomUUID() + "_" + originalName.replace(" ", "_");
-            Path savedPath = WORK_UPLOAD_DIR.resolve(savedName);
-
-            Files.copy(mediaFile.getInputStream(), savedPath, StandardCopyOption.REPLACE_EXISTING);
+            String contentType = mediaFile.getContentType() != null ? mediaFile.getContentType() : "application/octet-stream";
+            String base64 = Base64.getEncoder().encodeToString(mediaFile.getBytes());
 
             workDAO.saveFile(
                     WorkFileVO.builder()
                             .workId(workId)
-                            .fileUrl("/uploads/work/" + savedName)
-                            .fileType(mediaFile.getContentType() != null ? mediaFile.getContentType() : "application/octet-stream")
+                            .fileUrl("data:" + contentType + ";base64," + base64)
+                            .fileType(contentType)
                             .fileSize((int) mediaFile.getSize())
                             .sortOrder(0)
                             .build()
