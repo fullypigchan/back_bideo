@@ -42,6 +42,12 @@ public class GalleryService {
         return galleryDAO.findAllByMemberId(resolveMemberId(null));
     }
 
+    // 추천 예술관 (인기순)
+    @Transactional(readOnly = true)
+    public List<GalleryListResponseDTO> getRecommendedGalleries() {
+        return galleryDAO.findRecommended();
+    }
+
     public void update(Long id, Long memberId, GalleryUpdateRequestDTO requestDTO, MultipartFile coverFile) {
         Long resolvedMemberId = resolveMemberId(memberId);
         validateGalleryOwner(id, resolvedMemberId);

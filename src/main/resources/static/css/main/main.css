@@ -3171,6 +3171,10 @@ body.closeup-open .appViewport {
 }
 
 /* ─── 게스트 레이아웃 ──────────────────────────────── */
+body.guest-mode #HeaderContent {
+    left: 0;
+}
+
 body.guest-mode .appViewport {
     padding-left: 24px;
     padding-right: 24px;
