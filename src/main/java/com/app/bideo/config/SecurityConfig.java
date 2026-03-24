@@ -39,6 +39,7 @@ public class SecurityConfig {
                                 "/error-page",
                                 "/main/**",
                                 "/api/auth/**",
+                                "/api/works/**",
                                 "/oauth2/**",
                                 "/login/oauth2/**",
                                 "/css/**",
