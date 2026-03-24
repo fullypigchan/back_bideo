@@ -37,9 +37,12 @@ window.addEventListener('load', () => {
   const pinStore = new Map();
   let currentPage = 1;
   let hasMorePages = true;
+  let currentKeyword = '';
 
   async function fetchWorks(page, size) {
-    const res = await fetch('/api/works?page=' + page + '&size=' + size);
+    let url = '/api/works?page=' + page + '&size=' + size;
+    if (currentKeyword) url += '&keyword=' + encodeURIComponent(currentKeyword);
+    const res = await fetch(url);
     if (!res.ok) throw new Error('API error: ' + res.status);
     return res.json();
   }
@@ -243,6 +246,17 @@ window.addEventListener('load', () => {
     if (searchInput) searchInput.focus();
   }
 
+  async function executeSearch(keyword) {
+    currentKeyword = keyword || '';
+    currentPage = 1;
+    hasMorePages = true;
+    pinStore.clear();
+    const masonryEl = document.getElementById('masonry');
+    if (masonryEl) masonryEl.innerHTML = '';
+    hideSearchSuggestions();
+    await loadMorePins();
+  }
+
   function initSearch() {
     const searchInput = document.getElementById('search-input');
     const searchContainer = document.getElementById('searchBoxContainer');
@@ -266,6 +280,23 @@ window.addEventListener('load', () => {
     searchInput.addEventListener('keydown', function (e) {
       if (e.key === 'Escape') {
         searchInput.value = '';
+        searchInput.blur();
+      }
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        executeSearch(searchInput.value.trim());
+        searchInput.blur();
+      }
+    });
+
+    // 검색 제안 항목 클릭 시 검색 실행
+    searchContainer.addEventListener('click', function (e) {
+      const item = e.target.closest('.search-suggest__item');
+      if (!item || e.target.closest('[data-action="remove-recent-search"]')) return;
+      const text = item.querySelector('.search-suggest__text');
+      if (text) {
+        searchInput.value = text.textContent;
+        executeSearch(text.textContent.trim());
         searchInput.blur();
       }
     });
