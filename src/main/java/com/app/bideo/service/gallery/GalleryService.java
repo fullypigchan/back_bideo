@@ -1,9 +1,11 @@
 package com.app.bideo.service.gallery;
 
 import com.app.bideo.auth.member.CustomUserDetails;
+import com.app.bideo.domain.interaction.CommentVO;
 import com.app.bideo.dto.gallery.GalleryCreateRequestDTO;
 import com.app.bideo.dto.gallery.GalleryListResponseDTO;
 import com.app.bideo.dto.gallery.GalleryUpdateRequestDTO;
+import com.app.bideo.dto.interaction.CommentResponseDTO;
 import com.app.bideo.repository.gallery.GalleryDAO;
 import com.app.bideo.repository.work.WorkDAO;
 import lombok.RequiredArgsConstructor;
@@ -14,19 +16,13 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.nio.file.StandardCopyOption;
+import java.util.Base64;
 import java.util.List;
-import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
 @Transactional(rollbackFor = Exception.class)
 public class GalleryService {
-
-    private static final Path GALLERY_UPLOAD_DIR = Paths.get("uploads", "gallery");
 
     private final GalleryDAO galleryDAO;
     private final WorkDAO workDAO;
@@ -69,6 +65,37 @@ public class GalleryService {
         galleryDAO.delete(id);
     }
 
+    @Transactional(readOnly = true)
+    public List<CommentResponseDTO> getComments(Long id) {
+        galleryDAO.findMemberIdById(id)
+                .orElseThrow(() -> new IllegalArgumentException("gallery not found"));
+        return galleryDAO.findCommentsByGalleryId(id);
+    }
+
+    public List<CommentResponseDTO> writeComment(Long galleryId, Long memberId, String content) {
+        Long resolvedMemberId = resolveMemberId(memberId);
+        galleryDAO.findMemberIdById(galleryId)
+                .orElseThrow(() -> new IllegalArgumentException("gallery not found"));
+
+        String normalizedContent = content == null ? "" : content.trim();
+        if (normalizedContent.isBlank()) {
+            throw new IllegalArgumentException("comment content is empty");
+        }
+
+        galleryDAO.saveComment(
+                CommentVO.builder()
+                        .memberId(resolvedMemberId)
+                        .targetType("GALLERY")
+                        .targetId(galleryId)
+                        .content(normalizedContent)
+                        .isPinned(false)
+                        .likeCount(0)
+                        .build()
+        );
+        galleryDAO.increaseCommentCount(galleryId);
+        return galleryDAO.findCommentsByGalleryId(galleryId);
+    }
+
     private void validateGalleryOwner(Long galleryId, Long memberId) {
         Long ownerId = galleryDAO.findMemberIdById(galleryId)
                 .orElseThrow(() -> new IllegalArgumentException("gallery not found"));
@@ -100,14 +127,9 @@ public class GalleryService {
         }
 
         try {
-            Files.createDirectories(GALLERY_UPLOAD_DIR);
-
-            String originalName = coverFile.getOriginalFilename() != null ? coverFile.getOriginalFilename() : "gallery_image";
-            String savedName = UUID.randomUUID() + "_" + originalName.replace(" ", "_");
-            Path savedPath = GALLERY_UPLOAD_DIR.resolve(savedName);
-
-            Files.copy(coverFile.getInputStream(), savedPath, StandardCopyOption.REPLACE_EXISTING);
-            return "/uploads/gallery/" + savedName;
+            String contentType = coverFile.getContentType() != null ? coverFile.getContentType() : "image/png";
+            String base64 = Base64.getEncoder().encodeToString(coverFile.getBytes());
+            return "data:" + contentType + ";base64," + base64;
         } catch (IOException e) {
             throw new RuntimeException("gallery image upload failed", e);
         }
