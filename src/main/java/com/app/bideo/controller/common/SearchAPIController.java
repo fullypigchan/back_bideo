@@ -3,7 +3,7 @@ package com.app.bideo.controller.common;
 import com.app.bideo.auth.member.CustomUserDetails;
 import com.app.bideo.dto.common.SearchHistoryResponseDTO;
 import com.app.bideo.dto.common.TrendingKeywordDTO;
-import com.app.bideo.dto.gallery.GalleryListResponseDTO;
+import com.app.bideo.dto.gallery.SearchGallerySuggestionDTO;
 import com.app.bideo.service.common.SearchHistoryService;
 import com.app.bideo.service.gallery.GalleryService;
 import lombok.RequiredArgsConstructor;
@@ -49,8 +49,8 @@ public class SearchAPIController {
     }
 
     @GetMapping("/recommended-galleries")
-    public List<GalleryListResponseDTO> recommendedGalleries() {
-        return galleryService.getRecommendedGalleries();
+    public List<SearchGallerySuggestionDTO> recommendedGalleries() {
+        return galleryService.getRecommendedSearchGalleries();
     }
 
     @GetMapping("/trending")

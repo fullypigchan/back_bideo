@@ -4,6 +4,8 @@ import com.app.bideo.dto.common.SearchHistoryResponseDTO;
 import com.app.bideo.dto.common.TrendingKeywordDTO;
 import com.app.bideo.repository.common.SearchHistoryDAO;
 import lombok.RequiredArgsConstructor;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -21,6 +23,7 @@ public class SearchHistoryService {
         return searchHistoryDAO.findRecentSearches(memberId);
     }
 
+    @CacheEvict(value = "trendingKeywords", allEntries = true)
     public void saveSearch(Long memberId, String keyword) {
         if (keyword == null || keyword.trim().isEmpty()) return;
         searchHistoryDAO.save(memberId, keyword.trim());
@@ -30,6 +33,7 @@ public class SearchHistoryService {
         searchHistoryDAO.delete(id, memberId);
     }
 
+    @Cacheable("trendingKeywords")
     @Transactional(readOnly = true)
     public List<TrendingKeywordDTO> getTrendingKeywords() {
         return searchHistoryDAO.findTrendingKeywords();

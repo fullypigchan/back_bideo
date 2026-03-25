@@ -448,8 +448,8 @@ window.addEventListener('load', () => {
       const nav = document.getElementById('VerticalNavContent');
       const panel = document.createElement('div');
       panel.id = 'update-menu';
-      panel.className = 'side-panel'; // Pinterest 스타일 클래스 적용
-      panel.innerHTML = buildAlarmListHTML();
+      panel.className = 'side-panel';
+      panel.innerHTML = buildAlarmPanelShell();
 
       panel.addEventListener('click', function (e) {
         e.stopPropagation();
@@ -461,39 +461,82 @@ window.addEventListener('load', () => {
         panel.remove();
         resetAllNavIcons();
       });
+
+      loadNotificationsFromAPI(panel);
     });
   }
 
-  function buildAlarmListHTML() {
-    const alarms = [
-      {type: 'auction', user: '정찬호', msg: '님이 경매를 시작하였습니다.', time: '방금 전', thumb: true},
-      {type: 'auction_deadline', user: 'BIDEO', msg: '경매 종료 임박! 마지막 입찰 기회를 놓치지 마세요.', time: '10분 전', gold: true},
-      {type: 'auction_end', user: '경매 알림', msg: '경매가 종료되었습니다. 결과를 확인하세요.', time: '30분 전'},
-      {type: 'purchase', user: '김작가', msg: '님이 당신의 작품을 구매하였습니다.', time: '1시간 전', thumb: true},
-      {type: 'contest_rec', user: 'BIDEO', msg: '당신을 위한 공모전 추천: 2026 비디오 아트전', time: '2시간 전', gold: true},
-      {type: 'contest_deadline', user: '공모전 위원회', msg: '참여 마감 임박! 2026 디지털 콜라주전', time: '3시간 전'},
-      {type: 'like', user: '이수진', msg: '님이 당신의 작품에 좋아요를 눌렀습니다.', time: '어제', thumb: true},
-      {type: 'request', user: '참여 요청', msg: '당신의 프로젝트에 15명의 참여 요청이 도착했습니다.', time: '2일 전', gold: true}
-    ];
-
-    let listItems = alarms.map((a, i) => `
-      <div class="side-panel__update-item" style="padding:12px 16px; display:flex; align-items:center; gap:12px; cursor:pointer; transition: background 0.2s;" onmouseover="this.style.background='#f0f0f0'" onmouseout="this.style.background='none'">
-        <img src="${createAvatarDataUri(a.user, i)}" style="width:48px; height:48px; border-radius:50%;">
-        <div style="flex:1;">
-          <div style="font-size:14px; color:#111; line-height:1.4;"><strong>${a.user}</strong> ${a.msg}</div>
-          <div style="font-size:12px; color:#767676; margin-top:2px;">${a.time}</div>
-        </div>
-        ${a.thumb ? `<div style="width:40px; height:40px; background:#eee; border-radius:8px; overflow:hidden;"><img src="${LOCAL_PROFILE_IMAGE}" style="width:100%; height:100%; object-fit:cover;"></div>` : ''}
-        ${a.gold ? `<div style="width:8px; height:8px; background:#f0d999; border-radius:50%;"></div>` : ''}
-      </div>
-    `).join('');
-
+  function buildAlarmPanelShell() {
     return `
       <div class="side-panel__header" style="padding: 24px 20px 12px; display:flex; justify-content:space-between; align-items:center;">
         <h2 class="side-panel__title" style="font-size:18px; font-weight:700; margin:0;">알림</h2>
         <button class="side-panel__close button-reset icon-container rounded-circle" style="width:32px; height:32px;"><svg height="16" viewBox="0 0 24 24" width="16"><path d="m12 13.41 8.3 8.3 1.4-1.42L13.42 12l8.3-8.3-1.42-1.4-8.3 8.28-8.3-8.3L2.3 3.7l8.28 8.3-8.3 8.3 1.42 1.4z"></path></svg></button>
       </div>
-      <div class="side-panel__body">${listItems}</div>`;
+      <div class="side-panel__body" id="alarm-list-body">
+        <div style="padding:40px 16px; text-align:center; color:#767676; font-size:14px;">불러오는 중...</div>
+      </div>`;
+  }
+
+  function formatNotiTime(dateStr) {
+    const now = new Date();
+    const date = new Date(dateStr);
+    const diff = Math.floor((now - date) / 1000);
+    if (diff < 60) return '방금 전';
+    if (diff < 3600) return Math.floor(diff / 60) + '분 전';
+    if (diff < 86400) return Math.floor(diff / 3600) + '시간 전';
+    if (diff < 172800) return '어제';
+    return Math.floor(diff / 86400) + '일 전';
+  }
+
+  function renderAlarmItems(notifications) {
+    if (!notifications || notifications.length === 0) {
+      return '<div style="padding:40px 16px; text-align:center; color:#767676; font-size:14px;">알림이 없습니다.</div>';
+    }
+
+    const systemTypes = ['AUCTION_END', 'SETTLEMENT'];
+
+    return notifications.map(function (n, i) {
+      const userName = n.senderNickname || 'BIDEO';
+      const isSystem = !n.senderId || systemTypes.indexOf(n.notiType) !== -1;
+      const avatarSrc = n.senderProfileImage || createAvatarDataUri(userName, i);
+      const time = formatNotiTime(n.createdDatetime);
+      const unreadDot = !n.isRead
+          ? '<div style="width:8px; height:8px; background:#f0d999; border-radius:50%; flex-shrink:0;"></div>'
+          : '';
+
+      return '<div class="side-panel__update-item" style="padding:12px 16px; display:flex; align-items:center; gap:12px; cursor:pointer; transition: background 0.2s;" onmouseover="this.style.background=\'#f0f0f0\'" onmouseout="this.style.background=\'none\'">'
+          + '<img src="' + avatarSrc + '" style="width:48px; height:48px; border-radius:50%; object-fit:cover;">'
+          + '<div style="flex:1;">'
+          + '<div style="font-size:14px; color:#111; line-height:1.4;"><strong>' + userName + '</strong> ' + n.message + '</div>'
+          + '<div style="font-size:12px; color:#767676; margin-top:2px;">' + time + '</div>'
+          + '</div>'
+          + unreadDot
+          + '</div>';
+    }).join('');
+  }
+
+  function loadNotificationsFromAPI(panel) {
+    const body = panel.querySelector('#alarm-list-body');
+
+    fetch('/api/notifications')
+        .then(function (res) {
+          if (!res.ok) throw new Error('HTTP ' + res.status);
+          return res.json();
+        })
+        .then(function (data) {
+          body.innerHTML = renderAlarmItems(data);
+        })
+        .catch(function () {
+          body.innerHTML = renderAlarmItems(getFallbackAlarms());
+        });
+  }
+
+  function getFallbackAlarms() {
+    return [
+      {senderNickname: '정찬호', message: '님이 경매를 시작하였습니다.', notiType: 'BID', isRead: false, createdDatetime: new Date().toISOString()},
+      {senderNickname: 'BIDEO', message: '경매 종료 임박! 마지막 입찰 기회를 놓치지 마세요.', notiType: 'AUCTION_END', isRead: false, createdDatetime: new Date(Date.now() - 600000).toISOString()},
+      {senderNickname: '이수진', message: '님이 당신의 작품에 좋아요를 눌렀습니다.', notiType: 'LIKE', isRead: true, createdDatetime: new Date(Date.now() - 86400000).toISOString()}
+    ];
   }
 
   // ─── 메시지 패널 헬퍼 함수들 ─────────────────────────
