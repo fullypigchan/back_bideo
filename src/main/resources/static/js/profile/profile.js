@@ -481,12 +481,16 @@ async function renderWorkDetailModal(work) {
     const canOpenAuctionDetail = Boolean(work.hasActiveAuction);
     auctionButton.disabled = !canOpenAuctionDetail && !isViewerWork;
     auctionButton.classList.toggle('is-disabled', !canOpenAuctionDetail && !isViewerWork);
-    const auctionText = work.hasActiveAuction ? '경매중' : (isViewerWork ? '경매요청하기' : '경매하기');
+    const auctionText = work.hasActiveAuction
+      ? (isOwnWork ? '경매중' : '경매참여하기')
+      : (isViewerWork ? '경매요청하기' : '경매하기');
     auctionButton.title = auctionText;
     auctionButton.setAttribute('aria-label', auctionText);
   }
   if (auctionLabel) {
-    auctionLabel.textContent = work.hasActiveAuction ? '경매중' : (isViewerWork ? '경매요청하기' : '경매하기');
+    auctionLabel.textContent = work.hasActiveAuction
+      ? (isOwnWork ? '경매중' : '경매참여하기')
+      : (isViewerWork ? '경매요청하기' : '경매하기');
   }
 
   syncLikeButtonIcon(document.getElementById('workDetailLikeButton'), Boolean(work.isLiked), 24);
