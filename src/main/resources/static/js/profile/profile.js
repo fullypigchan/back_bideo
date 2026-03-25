@@ -4,13 +4,19 @@ const RING_SIZE = 87;
 const RING_RADIUS = 40.5;
 const RING_ACTIVE = '#c4a84d';
 const RING_GREY = 'rgb(219, 223, 228)';
+const HEART_OUTLINE_ICON = '<svg aria-label="좋아요" viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path d="M16.792 3.904A4.989 4.989 0 0 1 21.5 9.122c0 3.072-2.652 4.959-5.197 7.222-2.512 2.243-3.865 3.469-4.303 3.752-.477-.309-2.143-1.823-4.303-3.752C5.141 14.072 2.5 12.167 2.5 9.122a4.989 4.989 0 0 1 4.708-5.218 4.21 4.21 0 0 1 3.675 1.941c.84 1.175.98 1.763 1.12 1.763s.278-.588 1.11-1.766a4.17 4.17 0 0 1 3.679-1.938m0-2a6.04 6.04 0 0 0-4.797 2.127 6.052 6.052 0 0 0-4.787-2.127A6.985 6.985 0 0 0 .5 9.122c0 3.61 2.55 5.827 5.015 7.97.283.246.569.494.853.747l1.027.918a44.998 44.998 0 0 0 3.518 3.018 2 2 0 0 0 2.174 0 45.263 45.263 0 0 0 3.626-3.115l.922-.824c.293-.26.59-.519.885-.774 2.334-2.025 4.98-4.32 4.98-7.94a6.985 6.985 0 0 0-6.708-7.218Z"></path></svg>';
+const HEART_FILLED_ICON = '<svg aria-label="좋아요" viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54z"></path></svg>';
 let currentWorkDetail = null;
 let currentGalleryDetail = null;
+let currentMemberId = null;
 let workEditTags = [];
 let workEditSelectedFile = null;
 let workEditExistingMediaUrl = null;
 let galleryEditSelectedFile = null;
 let galleryEditExistingCoverUrl = null;
+let selectedShareRecipients = [];
+let isWorkLikeRequestPending = false;
+let isGalleryLikeRequestPending = false;
 const workEditGallerySelect = document.getElementById('workEditGallerySelect');
 const workEditGallerySelectWrap = document.getElementById('workEditGallerySelectWrap');
 const workEditGallerySelectTrigger = document.getElementById('workEditGallerySelectTrigger');
@@ -114,6 +120,221 @@ function escapeHtml(value) {
     .replace(/'/g, '&#39;');
 }
 
+function getHeartIconMarkup(isLiked, size = 24) {
+  return (isLiked ? HEART_FILLED_ICON : HEART_OUTLINE_ICON)
+    .replace('width="24"', `width="${size}"`)
+    .replace('height="24"', `height="${size}"`);
+}
+
+function syncLikeButtonIcon(button, isLiked, size = 24) {
+  if (!button) return;
+  button.classList.toggle('is-liked', isLiked);
+  button.setAttribute('aria-pressed', isLiked ? 'true' : 'false');
+  button.innerHTML = getHeartIconMarkup(isLiked, size);
+}
+
+function syncGalleryLikeButtonState(isLiked) {
+  const likeButton = document.getElementById('galleryCloseupLikeButton');
+  const icon = likeButton?.querySelector('.gallery-closeup__stat-icon');
+  if (!likeButton || !icon) return;
+
+  likeButton.classList.toggle('is-liked', isLiked);
+  likeButton.setAttribute('aria-pressed', isLiked ? 'true' : 'false');
+  icon.innerHTML = getHeartIconMarkup(isLiked, 18);
+}
+
+function formatLikeCountLabel(count) {
+  return `좋아요 ${Number(count ?? 0).toLocaleString('ko-KR')}개`;
+}
+
+function formatCommentCountLabel(count) {
+  return `댓글 ${Number(count ?? 0).toLocaleString('ko-KR')}개`;
+}
+
+function scrollToLatestComment(containerId, itemSelector) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+
+  window.requestAnimationFrame(() => {
+    const items = container.querySelectorAll(itemSelector);
+    const latestItem = items[items.length - 1];
+    if (!latestItem) return;
+
+    latestItem.scrollIntoView({
+      behavior: 'smooth',
+      block: 'nearest'
+    });
+  });
+}
+
+async function toggleCommentLikeButton(likeButton) {
+  const commentId = Number(likeButton?.dataset.commentId || 0);
+  if (!commentId || likeButton.dataset.pending === 'true') return;
+
+  const previousLiked = likeButton.classList.contains('is-liked');
+  const nextLiked = !previousLiked;
+
+  likeButton.dataset.pending = 'true';
+  syncLikeButtonIcon(likeButton, nextLiked, 12);
+
+  try {
+    const response = await fetch(`/api/comments/${commentId}/likes`, {
+      method: 'POST'
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(errorText || '댓글 좋아요 처리에 실패했습니다.');
+    }
+
+    const result = await response.json();
+    syncLikeButtonIcon(likeButton, Boolean(result.liked), 12);
+  } catch (error) {
+    syncLikeButtonIcon(likeButton, previousLiked, 12);
+    alert(error.message || '댓글 좋아요 처리에 실패했습니다.');
+  } finally {
+    delete likeButton.dataset.pending;
+  }
+}
+
+function getShareRecipients() {
+  const merged = [...(followData.followers || []), ...(followData.following || [])];
+  const unique = new Map();
+
+  merged.forEach((user, index) => {
+    const username = user.username || `user_${index}`;
+    if (unique.has(username)) return;
+
+    unique.set(username, {
+      id: username,
+      username,
+      realname: user.realname || username,
+      avatarText: (user.realname || username || 'U').trim().charAt(0).toUpperCase()
+    });
+  });
+
+  return Array.from(unique.values());
+}
+
+function renderShareSelectedRecipients() {
+  const container = document.getElementById('workShareSelectedList');
+  if (!container) return;
+
+  if (!selectedShareRecipients.length) {
+    container.innerHTML = '';
+    return;
+  }
+
+  container.innerHTML = selectedShareRecipients.map((recipient) => `
+    <div class="work-share-chip">
+      <span class="work-share-chip__text">${escapeHtml(recipient.username)}</span>
+      <button class="work-share-chip__remove" type="button" data-share-remove="${escapeHtml(recipient.id)}" aria-label="${escapeHtml(recipient.username)} 삭제">
+        <svg viewBox="0 0 24 24" width="12" height="12" aria-hidden="true">
+          <polyline fill="none" points="20.643 3.357 12 12 3.353 20.647" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="3"></polyline>
+          <line fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="3" x1="20.649" x2="3.354" y1="20.649" y2="3.354"></line>
+        </svg>
+      </button>
+    </div>
+  `).join('');
+}
+
+function renderShareRecipientList(filter = '') {
+  const list = document.getElementById('workShareRecipientList');
+  if (!list) return;
+
+  const normalized = filter.trim().toLowerCase();
+  const recipients = getShareRecipients().filter((recipient) => {
+    if (!normalized) return true;
+    return recipient.username.toLowerCase().includes(normalized) || recipient.realname.toLowerCase().includes(normalized);
+  }).slice(0, 5);
+
+  if (!recipients.length) {
+    list.innerHTML = `
+      <div class="work-share-empty">
+        <div class="work-share-empty__title">검색 결과가 없습니다.</div>
+        <div class="work-share-empty__copy">다른 사용자 이름으로 다시 검색해보세요.</div>
+      </div>
+    `;
+    return;
+  }
+
+  list.innerHTML = recipients.map((recipient) => {
+    const isSelected = selectedShareRecipients.some((selected) => selected.id === recipient.id);
+    return `
+      <button class="work-share-recipient${isSelected ? ' is-selected' : ''}" type="button" data-share-recipient="${escapeHtml(recipient.id)}">
+        <div class="work-share-recipient__main">
+          <div class="work-share-recipient__avatar">${escapeHtml(recipient.avatarText)}</div>
+          <div class="work-share-recipient__copy">
+            <div class="work-share-recipient__username">${escapeHtml(recipient.username)}</div>
+            <div class="work-share-recipient__realname">${escapeHtml(recipient.realname)}</div>
+          </div>
+        </div>
+        <div class="work-share-recipient__check${isSelected ? ' is-selected' : ''}">
+          ${isSelected ? '<svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><polyline fill="none" points="21.648 5.352 9.002 17.998 2.358 11.358" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="3"></polyline></svg>' : ''}
+        </div>
+      </button>
+    `;
+  }).join('');
+}
+
+function toggleShareRecipient(recipientId) {
+  const recipients = getShareRecipients();
+  const target = recipients.find((recipient) => recipient.id === recipientId);
+  if (!target) return;
+
+  const existingIndex = selectedShareRecipients.findIndex((recipient) => recipient.id === recipientId);
+  if (existingIndex >= 0) {
+    selectedShareRecipients.splice(existingIndex, 1);
+  } else {
+    selectedShareRecipients.push(target);
+  }
+
+  renderShareSelectedRecipients();
+  renderShareRecipientList(document.getElementById('workShareSearchInput')?.value || '');
+}
+
+function removeShareRecipient(recipientId) {
+  selectedShareRecipients = selectedShareRecipients.filter((recipient) => recipient.id !== recipientId);
+  renderShareSelectedRecipients();
+  renderShareRecipientList(document.getElementById('workShareSearchInput')?.value || '');
+}
+
+function openWorkShareModal() {
+  selectedShareRecipients = [];
+  renderShareSelectedRecipients();
+  renderShareRecipientList('');
+
+  const searchInput = document.getElementById('workShareSearchInput');
+  const messageInput = document.getElementById('workShareMessageInput');
+
+  if (searchInput) searchInput.value = '';
+  if (messageInput) messageInput.value = '';
+
+  document.getElementById('workShareModal')?.classList.add('active');
+  window.setTimeout(() => searchInput?.focus(), 0);
+}
+
+function submitWorkShare() {
+  if (!selectedShareRecipients.length) {
+    alert('공유할 대상을 1명 이상 선택해주세요.');
+    return;
+  }
+
+  const recipientsLabel = selectedShareRecipients.map((recipient) => recipient.username).join(', ');
+  const message = document.getElementById('workShareMessageInput')?.value.trim() || '';
+  const workTitle = currentWorkDetail?.title || '게시물';
+  const suffix = message ? `\n메시지: ${message}` : '';
+
+  alert(`${workTitle}을(를) ${recipientsLabel}에게 공유했습니다.${suffix}`);
+  closeModal('workShareModal');
+}
+
+function requestWorkAuction() {
+  if (!currentWorkDetail?.id) return;
+
+  alert(`"${currentWorkDetail.title || '작품'}" 경매요청을 보냈습니다.`);
+}
+
 function renderWorkComments(comments) {
   const commentsContainer = document.getElementById('workDetailCommentsContainer');
   if (!commentsContainer) return;
@@ -133,6 +354,8 @@ function renderWorkComments(comments) {
     return;
   }
 
+  commentsContainer.classList.remove('is-scrollable');
+
   commentsContainer.innerHTML = comments.map((comment) => `
     <div class="work-detail-comment-item">
       <img class="work-detail-comment-avatar" src="${comment.memberProfileImage || '/images/BIDEO_LOGO/BIDEO_favicon.png'}" alt="${escapeHtml(comment.memberNickname || 'user')}">
@@ -145,8 +368,24 @@ function renderWorkComments(comments) {
           <span>${formatWorkDate(comment.createdDatetime)}</span>
         </div>
       </div>
+      <button class="work-detail-comment-like-btn${comment.isLiked ? ' is-liked' : ''}" type="button" data-comment-id="${comment.id}" aria-label="좋아요" aria-pressed="${comment.isLiked ? 'true' : 'false'}">${getHeartIconMarkup(Boolean(comment.isLiked), 12)}</button>
     </div>
   `).join('');
+}
+
+async function loadCurrentMember() {
+  try {
+    const response = await fetch('/api/auth/me');
+    if (!response.ok) {
+      currentMemberId = null;
+      return;
+    }
+
+    const member = await response.json();
+    currentMemberId = member?.id ?? null;
+  } catch (error) {
+    currentMemberId = null;
+  }
 }
 
 function renderWorkMedia(work) {
@@ -202,21 +441,49 @@ async function renderWorkDetailModal(work) {
   const tags = (work.tags || []).map((tag) => `#${tag.tagName}`).join(' ');
   tagsEl.textContent = tags;
   tagsEl.style.display = tags ? 'block' : 'none';
+  const likeCountElement = document.getElementById('workDetailLikeCount');
+  if (likeCountElement) {
+    likeCountElement.textContent = formatLikeCountLabel(work.likeCount ?? 0);
+  }
+  const commentSummaryElement = document.getElementById('workDetailCommentSummary');
+  if (commentSummaryElement) {
+    commentSummaryElement.textContent = formatCommentCountLabel(work.commentCount ?? 0);
+  }
 
-  const statsEl = document.getElementById('workDetailStats');
-  const likeCount = work.likeCount ?? 0;
-  const viewCount = work.viewCount ?? 0;
-  statsEl.textContent = `좋아요 ${likeCount} · 조회수 ${viewCount}`;
+  const tradeButton = document.getElementById('workDetailTradeButton');
+  const tradeWrap = document.getElementById('workDetailTradeWrap');
+  const auctionButton = document.getElementById('workDetailAuctionButton');
+  const auctionWrap = document.getElementById('workDetailAuctionWrap');
+  const auctionLabel = document.getElementById('workDetailAuctionLabel');
+  const isOwnWork = currentMemberId !== null && work.memberId === currentMemberId;
+  const shouldHideTrade = IS_OWNER || isOwnWork;
+  const isViewerWork = !IS_OWNER && !isOwnWork;
+  if (tradeWrap) {
+    tradeWrap.hidden = shouldHideTrade;
+    tradeWrap.style.display = shouldHideTrade ? 'none' : 'flex';
+  }
+  if (tradeButton) {
+    tradeButton.disabled = false;
+    tradeButton.classList.remove('is-disabled');
+    tradeButton.title = '거래하기';
+  }
+  if (auctionWrap) {
+    auctionWrap.hidden = false;
+    auctionWrap.style.display = 'flex';
+  }
+  if (auctionButton) {
+    auctionButton.disabled = !isViewerWork;
+    auctionButton.classList.toggle('is-disabled', !isViewerWork);
+    auctionButton.title = isViewerWork ? '경매요청하기' : '경매하기';
+    auctionButton.setAttribute('aria-label', isViewerWork ? '경매요청하기' : '경매하기');
+  }
+  if (auctionLabel) {
+    auctionLabel.textContent = isViewerWork ? '경매요청하기' : '경매하기';
+  }
 
-  const commentCountEl = document.getElementById('workDetailCommentCount');
-  commentCountEl.textContent = `댓글 ${work.commentCount ?? 0}`;
+  syncLikeButtonIcon(document.getElementById('workDetailLikeButton'), Boolean(work.isLiked), 24);
+
   renderWorkComments(work.comments || []);
-
-  const statusEl = document.getElementById('workDetailStatus');
-  statusEl.textContent = work.status || 'ACTIVE';
-
-  const licenseEl = document.getElementById('workDetailLicense');
-  licenseEl.textContent = work.licenseType || 'LICENSE';
 
   await renderWorkMedia(work);
   closeModal('workActionModal');
@@ -256,6 +523,7 @@ async function submitWorkComment() {
     const updatedWork = await response.json();
     input.value = '';
     await renderWorkDetailModal(updatedWork);
+    scrollToLatestComment('workDetailCommentsContainer', '.work-detail-comment-item');
   } catch (error) {
     alert(error.message || '댓글 등록에 실패했습니다.');
   }
@@ -756,6 +1024,7 @@ function openGalleryCloseupModal(trigger) {
   const workCount = Number(trigger.dataset.galleryWorkCount || 0);
   const likeCount = Number(trigger.dataset.galleryLikeCount || 0);
   const viewCount = Number(trigger.dataset.galleryViewCount || 0);
+  const isLiked = trigger.dataset.galleryLiked === 'true';
 
   const image = document.getElementById('galleryCloseupImage');
   const fallback = document.getElementById('galleryCloseupFallback');
@@ -774,7 +1043,8 @@ function openGalleryCloseupModal(trigger) {
     workCount,
     likeCount,
     viewCount,
-    cover
+    cover,
+    isLiked
   };
 
   if (titleElement) titleElement.textContent = title;
@@ -782,6 +1052,7 @@ function openGalleryCloseupModal(trigger) {
   if (workCountElement) workCountElement.textContent = workCount.toLocaleString('ko-KR');
   if (likeCountElement) likeCountElement.textContent = likeCount.toLocaleString('ko-KR');
   if (viewCountElement) viewCountElement.textContent = viewCount.toLocaleString('ko-KR');
+  syncGalleryLikeButtonState(isLiked);
   if (descriptionElement) {
     descriptionElement.textContent = description || `${owner}님의 예술관입니다. 작품 ${workCount.toLocaleString('ko-KR')}개, 좋아요 ${likeCount.toLocaleString('ko-KR')}개, 조회수 ${viewCount.toLocaleString('ko-KR')}회를 기록했습니다.`;
   }
@@ -823,8 +1094,11 @@ function renderGalleryComments(comments) {
     return;
   }
 
-  commentsContainer.innerHTML = comments.map((comment) => `
-    <div class="closeup__comment-item">
+  const limit = 5;
+  const hasMore = comments.length > limit;
+
+  commentsContainer.innerHTML = comments.map((comment, index) => `
+    <div class="closeup__comment-item${index >= limit ? ' is-hidden' : ''}">
       <img class="closeup__comment-avatar" src="${comment.memberProfileImage || '/images/BIDEO_LOGO/BIDEO_favicon.png'}" alt="${escapeHtml(comment.memberNickname || 'user')}">
       <div class="closeup__comment-body">
         <div class="closeup__comment-meta">
@@ -833,8 +1107,11 @@ function renderGalleryComments(comments) {
         </div>
         <p class="closeup__comment-text">${escapeHtml(comment.content || '')}</p>
       </div>
+      <button class="work-detail-comment-like-btn${comment.isLiked ? ' is-liked' : ''}" type="button" data-comment-id="${comment.id}" aria-label="좋아요" aria-pressed="${comment.isLiked ? 'true' : 'false'}">${getHeartIconMarkup(Boolean(comment.isLiked), 12)}</button>
     </div>
-  `).join('');
+  `).join('') + (hasMore ? `
+    <button class="comment-more-btn" type="button" data-comments-toggle="gallery" aria-expanded="false">더보기</button>
+  ` : '');
 }
 
 async function loadGalleryComments(galleryId) {
@@ -850,6 +1127,57 @@ async function loadGalleryComments(galleryId) {
     renderGalleryComments(comments);
   } catch (error) {
     renderGalleryComments([]);
+  }
+}
+
+function updateGalleryLikeUi(galleryId, liked, likeCount) {
+  const likeCountElement = document.getElementById('galleryCloseupLikeCount');
+  if (likeCountElement) {
+    likeCountElement.textContent = Number(likeCount ?? 0).toLocaleString('ko-KR');
+  }
+
+  syncGalleryLikeButtonState(liked);
+
+  document.querySelectorAll(`[data-gallery-id="${galleryId}"]`).forEach((element) => {
+    element.dataset.galleryLiked = liked ? 'true' : 'false';
+    element.dataset.galleryLikeCount = String(likeCount ?? 0);
+  });
+
+  if (currentGalleryDetail && currentGalleryDetail.id === galleryId) {
+    currentGalleryDetail.isLiked = liked;
+    currentGalleryDetail.likeCount = likeCount;
+  }
+}
+
+async function toggleGalleryLike() {
+  if (!currentGalleryDetail?.id) return;
+  if (isGalleryLikeRequestPending) return;
+
+  const previousLiked = Boolean(currentGalleryDetail.isLiked);
+  const previousLikeCount = Number(currentGalleryDetail.likeCount ?? 0);
+  const nextLiked = !previousLiked;
+  const nextLikeCount = nextLiked ? previousLikeCount + 1 : Math.max(0, previousLikeCount - 1);
+
+  isGalleryLikeRequestPending = true;
+  updateGalleryLikeUi(currentGalleryDetail.id, nextLiked, nextLikeCount);
+
+  try {
+    const response = await fetch(`/api/galleries/${currentGalleryDetail.id}/likes`, {
+      method: 'POST'
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(errorText || '예술관 좋아요 처리에 실패했습니다.');
+    }
+
+    const result = await response.json();
+    updateGalleryLikeUi(currentGalleryDetail.id, Boolean(result.liked), Number(result.likeCount ?? 0));
+  } catch (error) {
+    updateGalleryLikeUi(currentGalleryDetail.id, previousLiked, previousLikeCount);
+    alert(error.message || '예술관 좋아요 처리에 실패했습니다.');
+  } finally {
+    isGalleryLikeRequestPending = false;
   }
 }
 
@@ -999,6 +1327,7 @@ async function submitGalleryComment() {
     const comments = await response.json();
     input.textContent = '';
     renderGalleryComments(comments);
+    scrollToLatestComment('galleryCloseupCommentsContainer', '.closeup__comment-item');
   } catch (error) {
     alert(error.message || '예술관 댓글 등록에 실패했습니다.');
   }
@@ -1238,6 +1567,7 @@ function renderProfileBadges() {
 
 // ─── DOMContentLoaded (통합) ─────────────────────
 document.addEventListener('DOMContentLoaded', () => {
+  loadCurrentMember();
   initializeWorkEditGallerySelect();
   // 하이라이트 링 렌더링
   const highlights = document.querySelectorAll('.video-gallery-li');
@@ -1363,6 +1693,11 @@ document.addEventListener('DOMContentLoaded', () => {
   const galleryEditFileInput = document.getElementById('galleryEditFileInput');
   const galleryCloseupCommentInput = document.getElementById('galleryCloseupCommentInput');
   const galleryCloseupCommentSubmit = document.getElementById('galleryCloseupCommentSubmit');
+  const galleryCloseupLikeButton = document.getElementById('galleryCloseupLikeButton');
+  const workShareSearchInput = document.getElementById('workShareSearchInput');
+  const workShareRecipientList = document.getElementById('workShareRecipientList');
+  const workShareSelectedList = document.getElementById('workShareSelectedList');
+  const workShareSendButton = document.getElementById('workShareSendButton');
 
   if (workEditUploadArea && workEditFileInput) {
     workEditUploadArea.addEventListener('click', (event) => {
@@ -1490,6 +1825,117 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
+  document.getElementById('workDetailLikeButton')?.addEventListener('click', async (event) => {
+    if (!currentWorkDetail?.id) return;
+    if (isWorkLikeRequestPending) return;
+
+    const likeButton = event.currentTarget;
+    const previousLiked = Boolean(currentWorkDetail.isLiked);
+    const previousLikeCount = Number(currentWorkDetail.likeCount ?? 0);
+    const nextLiked = !previousLiked;
+    const nextLikeCount = nextLiked ? previousLikeCount + 1 : Math.max(0, previousLikeCount - 1);
+    const likeCountElement = document.getElementById('workDetailLikeCount');
+
+    isWorkLikeRequestPending = true;
+    syncLikeButtonIcon(likeButton, nextLiked, 24);
+    if (likeCountElement) {
+      likeCountElement.textContent = formatLikeCountLabel(nextLikeCount);
+    }
+    currentWorkDetail.isLiked = nextLiked;
+    currentWorkDetail.likeCount = nextLikeCount;
+
+    try {
+      const response = await fetch(`/api/works/${currentWorkDetail.id}/likes`, {
+        method: 'POST'
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(errorText || '작품 좋아요 처리에 실패했습니다.');
+      }
+
+      const result = await response.json();
+      const liked = Boolean(result.liked);
+      const likeCount = Number(result.likeCount ?? 0);
+      syncLikeButtonIcon(likeButton, liked, 24);
+      if (likeCountElement) {
+        likeCountElement.textContent = formatLikeCountLabel(likeCount);
+      }
+
+      currentWorkDetail.isLiked = liked;
+      currentWorkDetail.likeCount = likeCount;
+    } catch (error) {
+      syncLikeButtonIcon(likeButton, previousLiked, 24);
+      if (likeCountElement) {
+        likeCountElement.textContent = formatLikeCountLabel(previousLikeCount);
+      }
+      currentWorkDetail.isLiked = previousLiked;
+      currentWorkDetail.likeCount = previousLikeCount;
+      alert(error.message || '작품 좋아요 처리에 실패했습니다.');
+    } finally {
+      isWorkLikeRequestPending = false;
+    }
+  });
+
+  document.getElementById('workDetailCommentsContainer')?.addEventListener('click', (event) => {
+    const likeButton = event.target.closest('.work-detail-comment-like-btn');
+    if (!likeButton) return;
+    toggleCommentLikeButton(likeButton);
+  });
+
+  document.getElementById('workDetailAuctionButton')?.addEventListener('click', () => {
+    const isViewerWork = currentWorkDetail && currentMemberId !== null
+      ? currentWorkDetail.memberId !== currentMemberId
+      : !IS_OWNER;
+
+    if (!isViewerWork) return;
+    requestWorkAuction();
+  });
+
+  document.getElementById('galleryCloseupCommentsContainer')?.addEventListener('click', (event) => {
+    const toggleButton = event.target.closest('[data-comments-toggle="gallery"]');
+    if (toggleButton) {
+      const hiddenItems = event.currentTarget.querySelectorAll('.closeup__comment-item.is-hidden');
+      hiddenItems.forEach((item) => item.classList.remove('is-hidden'));
+      event.currentTarget.classList.add('is-scrollable');
+      toggleButton.remove();
+      return;
+    }
+
+    const likeButton = event.target.closest('.work-detail-comment-like-btn');
+    if (!likeButton) return;
+    toggleCommentLikeButton(likeButton);
+  });
+
+  document.getElementById('workDetailShareButton')?.addEventListener('click', openWorkShareModal);
+  workShareSearchInput?.addEventListener('input', (event) => {
+    renderShareRecipientList(event.target.value || '');
+  });
+
+  workShareSearchInput?.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      const firstRecipient = workShareRecipientList?.querySelector('[data-share-recipient]');
+      if (firstRecipient) {
+        toggleShareRecipient(firstRecipient.dataset.shareRecipient);
+      }
+    }
+  });
+
+  workShareRecipientList?.addEventListener('click', (event) => {
+    const recipientButton = event.target.closest('[data-share-recipient]');
+    if (!recipientButton) return;
+    toggleShareRecipient(recipientButton.dataset.shareRecipient);
+  });
+
+  workShareSelectedList?.addEventListener('click', (event) => {
+    const removeButton = event.target.closest('[data-share-remove]');
+    if (!removeButton) return;
+    removeShareRecipient(removeButton.dataset.shareRemove);
+  });
+
+  workShareSendButton?.addEventListener('click', submitWorkShare);
+
   if (galleryEditUploadArea && galleryEditFileInput) {
     galleryEditUploadArea.addEventListener('click', () => {
       galleryEditFileInput.click();
@@ -1540,7 +1986,7 @@ document.addEventListener('DOMContentLoaded', () => {
 document.addEventListener('keydown', (e) => {
   if (e.key !== 'Escape') return;
 
-  const upperModals = ['badgeModal', 'nicknameModal', 'followModal', 'passwordModal', 'workDetailModal', 'galleryListModal', 'galleryCloseupModal', 'galleryActionModal', 'galleryEditModal'];
+  const upperModals = ['badgeModal', 'nicknameModal', 'followModal', 'passwordModal', 'workDetailModal', 'workShareModal', 'galleryListModal', 'galleryCloseupModal', 'galleryActionModal', 'galleryEditModal'];
   for (const id of upperModals) {
     const el = document.getElementById(id);
     if (el && el.classList.contains('active')) {
