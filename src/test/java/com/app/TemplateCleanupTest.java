@@ -101,6 +101,16 @@ class TemplateCleanupTest {
         assertTrue(closeupScript.contains("createAvatarDataUri"));
     }
 
+    @Test
+    void searchSuggestionsUseImageUrlsAndDropdownRootDelegation() throws IOException {
+        String mainScript = readResource("static/js/main/main.js");
+
+        assertTrue(mainScript.contains("item.coverImageUrl"));
+        assertFalse(mainScript.contains("item.coverImage ||"));
+        assertTrue(mainScript.contains("cachedDropdown.addEventListener('click'"));
+        assertFalse(mainScript.contains("searchContainer.addEventListener('click'"));
+    }
+
     private boolean resourceExists(String path) {
         return new ClassPathResource(path).exists();
     }

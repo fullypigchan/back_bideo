@@ -73,27 +73,24 @@ window.addEventListener('load', () => {
     return element.closest('.slot-block, .profile-summary, .icon-button');
   }
 
-// ─── 검색 제안용 SVG 생성 ────────────────────────────
-  function createArtworkDataUri(title, index, width, height) {
+// ─── 검색 제안 썸네일 (CSS gradient) ─────────────────
+  function thumbHTML(title, index) {
     const palette = placeholderPalettes[index % placeholderPalettes.length];
-    const safeTitle = (title || 'BIDEO').replace(/[&<>"']/g, '');
-    return encodeSvg(
-        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ' + width + ' ' + height + '">' +
-        '<defs><linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">' +
-        '<stop offset="0%" stop-color="' + palette[0] + '"/>' +
-        '<stop offset="60%" stop-color="' + palette[1] + '"/>' +
-        '<stop offset="100%" stop-color="' + palette[2] + '"/>' +
-        '</linearGradient></defs>' +
-        '<rect width="' + width + '" height="' + height + '" fill="url(#bg)"/>' +
-        '<circle cx="' + Math.round(width * 0.78) + '" cy="' + Math.round(height * 0.22) + '" r="' + Math.round(Math.min(width, height) * 0.12) + '" fill="rgba(255,255,255,0.18)"/>' +
-        '<text x="10%" y="78%" fill="#ffffff" font-family="Arial, sans-serif" font-size="' + Math.max(22, Math.round(width * 0.07)) + '" font-weight="700">' + safeTitle.slice(0, 18) + '</text>' +
-        '</svg>'
-    );
+    const safeTitle = (title || 'BIDEO').replace(/[&<>"']/g, '').slice(0, 12);
+    return '<div class="search-suggest__thumb" style="background:linear-gradient(135deg,' +
+        palette[0] + ',' + palette[1] + ',' + palette[2] + ')">' +
+        '<span class="search-suggest__thumb-label">' + safeTitle + '</span></div>';
   }
 
-  function createThumbEntries(texts, startIndex) {
-    return texts.map(function (text, index) {
-      return {text: text, img: createArtworkDataUri(text, startIndex + index, 236, 236)};
+  function escapeHTML(text) {
+    return String(text == null ? '' : text).replace(/[&<>"']/g, function (char) {
+      return ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        '\'': '&#39;'
+      })[char];
     });
   }
 
@@ -126,29 +123,51 @@ window.addEventListener('load', () => {
     );
   }
 
-// ─── 검색 제안 데이터 (API) ─────────────────────────
+// ─── 검색 제안 캐시 ─────────────────────────────────
+  const searchCache = { recent: { data: null, ts: 0 }, galleries: { data: null, ts: 0 }, trending: { data: null, ts: 0 } };
+  const CACHE_TTL_SHORT = 30000;   // 최근검색: 30초
+  const CACHE_TTL_LONG  = 300000;  // 트렌딩/추천: 5분
+  const SEARCH_SECTION_META = {
+    recent: { heading: '최근 검색 기록', loadingCount: 3, smallItems: false },
+    galleries: { heading: '추천 예술관', loadingCount: 4, smallItems: false },
+    trending: { heading: 'BIDEO 인기 탐색', loadingCount: 4, smallItems: true }
+  };
+
+// ─── 검색 제안 데이터 (API + 캐시) ──────────────────
   async function fetchRecentSearches() {
     if (!IS_LOGGED_IN) return [];
+    if (searchCache.recent.data && Date.now() - searchCache.recent.ts < CACHE_TTL_SHORT) return searchCache.recent.data;
     try {
       const res = await fetch('/api/search/recent');
       if (!res.ok) return [];
-      return res.json();
+      const data = await res.json();
+      searchCache.recent.data = data;
+      searchCache.recent.ts = Date.now();
+      return data;
     } catch (e) { return []; }
   }
 
   async function fetchRecommendedGalleries() {
+    if (searchCache.galleries.data && Date.now() - searchCache.galleries.ts < CACHE_TTL_LONG) return searchCache.galleries.data;
     try {
       const res = await fetch('/api/search/recommended-galleries');
       if (!res.ok) return [];
-      return res.json();
+      const data = await res.json();
+      searchCache.galleries.data = data;
+      searchCache.galleries.ts = Date.now();
+      return data;
     } catch (e) { return []; }
   }
 
   async function fetchTrendingKeywords() {
+    if (searchCache.trending.data && Date.now() - searchCache.trending.ts < CACHE_TTL_LONG) return searchCache.trending.data;
     try {
       const res = await fetch('/api/search/trending');
       if (!res.ok) return [];
-      return res.json();
+      const data = await res.json();
+      searchCache.trending.data = data;
+      searchCache.trending.ts = Date.now();
+      return data;
     } catch (e) { return []; }
   }
 
@@ -160,6 +179,7 @@ window.addEventListener('load', () => {
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({keyword: keyword})
       });
+      searchCache.recent.ts = 0; // 캐시 무효화
     } catch (e) { /* ignore */ }
   }
 
@@ -167,129 +187,238 @@ window.addEventListener('load', () => {
     if (!id) return;
     try {
       await fetch('/api/search/recent/' + id, {method: 'DELETE'});
+      searchCache.recent.ts = 0; // 캐시 무효화
     } catch (e) { /* ignore */ }
   }
 
 // ─── 검색바 인터랙션 ───────────────────────────────
   let searchSuggestionsCreated = false;
+  let lastRenderedHTML = '';
+  const searchSectionMarkup = { recent: '', galleries: '', trending: '' };
+  const searchSectionRequests = { recent: null, galleries: null, trending: null };
 
-  async function createSearchSuggestions() {
+  function buildSectionHTML(sectionKey, bodyHTML) {
+    return '<div class="search-suggest__section" data-search-section="' + sectionKey + '">' +
+        '<div class="search-suggest__heading">' + SEARCH_SECTION_META[sectionKey].heading + '</div>' +
+        bodyHTML +
+        '</div>';
+  }
+
+  function buildLoadingSectionHTML(sectionKey) {
+    const config = SEARCH_SECTION_META[sectionKey];
+    let items = '';
+    for (let i = 0; i < config.loadingCount; i++) {
+      items += '<div class="search-suggest__item search-suggest__item--placeholder' +
+          (config.smallItems ? ' search-suggest__item--small' : '') + '">' +
+          '<div class="search-suggest__thumb search-suggest__thumb--placeholder"></div>' +
+          '<span class="search-suggest__text search-suggest__text--placeholder">loading</span>' +
+          '</div>';
+    }
+    return buildSectionHTML(sectionKey, '<div class="search-suggest__grid">' + items + '</div>');
+  }
+
+  function buildStatusSectionHTML(sectionKey, message) {
+    return buildSectionHTML(sectionKey,
+        '<div class="search-suggest__status">' + escapeHTML(message) + '</div>');
+  }
+
+  function buildRecentSectionHTML(recentData) {
+    if (!IS_LOGGED_IN) return '';
+    if (!recentData.length) return buildStatusSectionHTML('recent', '최근 검색 기록이 없습니다.');
+
+    let items = '';
+    recentData.forEach(function (item) {
+      items += '<div class="search-suggest__item" data-search-id="' + item.id + '">' +
+          thumbHTML(item.keyword, item.id || 0) +
+          '<span class="search-suggest__text">' + escapeHTML(item.keyword) + '</span>' +
+          '<button class="search-suggest__delete" type="button" data-action="remove-recent-search" aria-label="삭제">' +
+          '<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="m12 13.41 8.3 8.3 1.4-1.42L13.42 12l8.3-8.3-1.42-1.4-8.3 8.28-8.3-8.3L2.3 3.7l8.28 8.3-8.3 8.3 1.42 1.4z"></path></svg>' +
+          '</button>' +
+          '</div>';
+    });
+    return buildSectionHTML('recent', '<div class="search-suggest__grid">' + items + '</div>');
+  }
+
+  function buildGallerySectionHTML(galleryData) {
+    if (!galleryData.length) return '';
+
+    let items = '';
+    galleryData.forEach(function (item) {
+      const thumb = item.coverImageUrl
+          ? '<img class="search-suggest__thumb" src="' + item.coverImageUrl + '" alt="" loading="lazy" decoding="async" />'
+          : thumbHTML(item.title, item.id || 0);
+      items += '<div class="search-suggest__item" data-gallery-id="' + item.id + '">' +
+          thumb +
+          '<span class="search-suggest__text">' + escapeHTML(item.title) + '</span>' +
+          '</div>';
+    });
+    return buildSectionHTML('galleries', '<div class="search-suggest__grid">' + items + '</div>');
+  }
+
+  function buildTrendingSectionHTML(trendingData) {
+    if (!trendingData.length) return '';
+
+    let items = '';
+    trendingData.forEach(function (item, idx) {
+      items += '<div class="search-suggest__item search-suggest__item--small">' +
+          thumbHTML(item.keyword, 700 + idx) +
+          '<span class="search-suggest__text">' + escapeHTML(item.keyword) + '</span>' +
+          '</div>';
+    });
+    return buildSectionHTML('trending', '<div class="search-suggest__grid">' + items + '</div>');
+  }
+
+  function renderSearchSuggestions() {
+    if (!cachedDropdown) return;
+
+    let html = searchSectionMarkup.recent + searchSectionMarkup.galleries + searchSectionMarkup.trending;
+    if (!html) {
+      html = buildStatusSectionHTML('trending', '추천 검색어를 불러오지 못했습니다.');
+    }
+
+    if (html === lastRenderedHTML) return;
+    lastRenderedHTML = html;
+    cachedDropdown.innerHTML = html;
+  }
+
+  function updateSearchSectionMarkup(sectionKey, html) {
+    searchSectionMarkup[sectionKey] = html;
+    renderSearchSuggestions();
+  }
+
+  function resetSearchSectionMarkup() {
+    searchSectionMarkup.recent = IS_LOGGED_IN ? buildLoadingSectionHTML('recent') : '';
+    searchSectionMarkup.galleries = buildLoadingSectionHTML('galleries');
+    searchSectionMarkup.trending = buildLoadingSectionHTML('trending');
+  }
+
+  function isSectionCacheExpired(sectionKey) {
+    const cache = searchCache[sectionKey];
+    const ttl = sectionKey === 'recent' ? CACHE_TTL_SHORT : CACHE_TTL_LONG;
+    return !cache.data || Date.now() - cache.ts >= ttl;
+  }
+
+  function hasExpiredSearchSection() {
+    return (IS_LOGGED_IN && isSectionCacheExpired('recent')) ||
+        isSectionCacheExpired('galleries') ||
+        isSectionCacheExpired('trending');
+  }
+
+  function fetchSearchSectionData(sectionKey) {
+    if (sectionKey === 'recent') return fetchRecentSearches();
+    if (sectionKey === 'galleries') return fetchRecommendedGalleries();
+    return fetchTrendingKeywords();
+  }
+
+  function renderSearchSection(sectionKey, data) {
+    if (sectionKey === 'recent') return buildRecentSectionHTML(data);
+    if (sectionKey === 'galleries') return buildGallerySectionHTML(data);
+    return buildTrendingSectionHTML(data);
+  }
+
+  async function loadSearchSection(sectionKey, forceRefresh) {
+    if (sectionKey === 'recent' && !IS_LOGGED_IN) {
+      updateSearchSectionMarkup('recent', '');
+      return [];
+    }
+
+    if (!forceRefresh && !isSectionCacheExpired(sectionKey)) {
+      updateSearchSectionMarkup(sectionKey, renderSearchSection(sectionKey, searchCache[sectionKey].data || []));
+      return searchCache[sectionKey].data || [];
+    }
+
+    if (searchSectionRequests[sectionKey]) return searchSectionRequests[sectionKey];
+
+    if (!searchCache[sectionKey].data) {
+      updateSearchSectionMarkup(sectionKey, buildLoadingSectionHTML(sectionKey));
+    }
+
+    searchSectionRequests[sectionKey] = fetchSearchSectionData(sectionKey)
+        .then(function (data) {
+          updateSearchSectionMarkup(sectionKey, renderSearchSection(sectionKey, data));
+          searchSectionRequests[sectionKey] = null;
+          return data;
+        })
+        .catch(function () {
+          updateSearchSectionMarkup(sectionKey, sectionKey === 'recent'
+              ? buildStatusSectionHTML('recent', '최근 검색 기록을 불러오지 못했습니다.')
+              : '');
+          searchSectionRequests[sectionKey] = null;
+          return [];
+        });
+
+    return searchSectionRequests[sectionKey];
+  }
+
+  let cachedOverlay = null;
+  let cachedDropdown = null;
+  let cachedSearchBox = null;
+  let cachedSidebar = null;
+
+  function ensureDropdownElements() {
+    if (cachedOverlay) return;
     const searchContainer = document.getElementById('searchBoxContainer');
-    if (!searchContainer || searchSuggestionsCreated) return;
+    if (!searchContainer) return;
 
-    // 오버레이 생성
-    const overlay = document.createElement('div');
-    overlay.id = 'searchOverlay';
-    overlay.className = 'search-overlay';
-    document.body.appendChild(overlay);
+    cachedOverlay = document.createElement('div');
+    cachedOverlay.id = 'searchOverlay';
+    cachedOverlay.className = 'search-overlay';
+    document.body.appendChild(cachedOverlay);
 
-    // 드롭다운 생성
-    const dropdown = document.createElement('div');
-    dropdown.id = 'searchSuggestions';
-    dropdown.className = 'search-suggest';
-
-    // API 데이터 로드
-    const [recentData, galleryData, trendingData] = await Promise.all([
-      fetchRecentSearches(),
-      fetchRecommendedGalleries(),
-      fetchTrendingKeywords()
-    ]);
-
-    let html = '';
-
-    // 최근 검색 기록 섹션 (로그인 시에만)
-    if (IS_LOGGED_IN && recentData.length > 0) {
-      html += '<div class="search-suggest__section" id="recentSearchSection">' +
-          '<div class="search-suggest__heading">최근 검색 기록</div>' +
-          '<div class="search-suggest__grid">';
-      recentData.forEach(function (item) {
-        const thumb = createArtworkDataUri(item.keyword, item.id || 0, 236, 236);
-        html += '<div class="search-suggest__item" data-search-id="' + item.id + '">' +
-            '<img class="search-suggest__thumb" src="' + thumb + '" alt="" />' +
-            '<span class="search-suggest__text">' + item.keyword + '</span>' +
-            '<button class="search-suggest__delete" type="button" data-action="remove-recent-search" aria-label="삭제">' +
-            '<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="m12 13.41 8.3 8.3 1.4-1.42L13.42 12l8.3-8.3-1.42-1.4-8.3 8.28-8.3-8.3L2.3 3.7l8.28 8.3-8.3 8.3 1.42 1.4z"></path></svg>' +
-            '</button>' +
-            '</div>';
-      });
-      html += '</div></div>';
-    }
-
-    // 추천 예술관 섹션
-    if (galleryData.length > 0) {
-      html += '<div class="search-suggest__section">' +
-          '<div class="search-suggest__heading">추천 예술관</div>' +
-          '<div class="search-suggest__grid">';
-      galleryData.forEach(function (item) {
-        const thumb = item.coverImage || createArtworkDataUri(item.title, item.id || 0, 236, 236);
-        html += '<div class="search-suggest__item" data-gallery-id="' + item.id + '">' +
-            '<img class="search-suggest__thumb" src="' + thumb + '" alt="" />' +
-            '<span class="search-suggest__text">' + item.title + '</span>' +
-            '</div>';
-      });
-      html += '</div></div>';
-    }
-
-    // 인기 검색어 섹션
-    if (trendingData.length > 0) {
-      html += '<div class="search-suggest__section">' +
-          '<div class="search-suggest__heading">BIDEO 인기 탐색</div>' +
-          '<div class="search-suggest__grid">';
-      trendingData.forEach(function (item, idx) {
-        const thumb = createArtworkDataUri(item.keyword, 700 + idx, 236, 236);
-        html += '<div class="search-suggest__item search-suggest__item--small">' +
-            '<img class="search-suggest__thumb" src="' + thumb + '" alt="" />' +
-            '<span class="search-suggest__text">' + item.keyword + '</span>' +
-            '</div>';
-      });
-      html += '</div></div>';
-    }
-
-    dropdown.innerHTML = html;
+    cachedDropdown = document.createElement('div');
+    cachedDropdown.id = 'searchSuggestions';
+    cachedDropdown.className = 'search-suggest';
     const header = document.getElementById('HeaderContent');
-    (header || searchContainer).appendChild(dropdown);
+    (header || searchContainer).appendChild(cachedDropdown);
+    resetSearchSectionMarkup();
+    renderSearchSuggestions();
+
+    cachedSearchBox = findSearchBoxSurface();
+    cachedSidebar = document.getElementById('VerticalNavContent');
+  }
+
+  async function populateSearchSuggestions() {
+    if (searchSuggestionsCreated) return;
     searchSuggestionsCreated = true;
+    await Promise.all([
+      loadSearchSection('recent', true),
+      loadSearchSection('galleries', true),
+      loadSearchSection('trending', true)
+    ]);
   }
 
   function showSearchSuggestions() {
-    const dropdown = document.getElementById('searchSuggestions');
-    const overlay = document.getElementById('searchOverlay');
-    const searchBox = findSearchBoxSurface();
-    const sidebar = document.getElementById('VerticalNavContent');
-    if (dropdown) dropdown.style.display = 'block';
-    if (overlay) overlay.style.display = 'block';
-    if (searchBox) {
-      searchBox.style.borderRadius = '12px';
-      searchBox.style.boxShadow = 'none';
+    if (cachedDropdown) cachedDropdown.classList.add('search-suggest--visible');
+    if (cachedOverlay) cachedOverlay.classList.add('search-overlay--visible');
+    if (cachedSearchBox) {
+      cachedSearchBox.style.borderRadius = '12px';
+      cachedSearchBox.style.boxShadow = 'none';
     }
-    if (sidebar) sidebar.style.zIndex = '669';
+    if (cachedSidebar) cachedSidebar.style.zIndex = '669';
   }
 
   function hideSearchSuggestions() {
-    const dropdown = document.getElementById('searchSuggestions');
-    const overlay = document.getElementById('searchOverlay');
-    const searchBox = findSearchBoxSurface();
-    const sidebar = document.getElementById('VerticalNavContent');
-    if (dropdown) dropdown.style.display = 'none';
-    if (overlay) overlay.style.display = 'none';
-    if (searchBox) {
-      searchBox.style.borderRadius = '';
-      searchBox.style.boxShadow = '';
+    if (cachedDropdown) cachedDropdown.classList.remove('search-suggest--visible');
+    if (cachedOverlay) cachedOverlay.classList.remove('search-overlay--visible');
+    if (cachedSearchBox) {
+      cachedSearchBox.style.borderRadius = '';
+      cachedSearchBox.style.boxShadow = '';
     }
-    if (sidebar) sidebar.style.zIndex = '';
+    if (cachedSidebar) cachedSidebar.style.zIndex = '';
   }
 
   function removeRecentSearch(btn) {
     const item = btn.closest('.search-suggest__item');
     if (item) {
       const searchId = item.getAttribute('data-search-id');
-      if (searchId) deleteSearchHistory(searchId);
-      item.style.transition = 'opacity 0.2s, transform 0.2s';
-      item.style.opacity = '0';
-      item.style.transform = 'scale(0.8)';
-      setTimeout(function () {
-        item.remove();
-      }, 200);
+      if (searchId) {
+        searchCache.recent.data = (searchCache.recent.data || []).filter(function (entry) {
+          return String(entry.id) !== String(searchId);
+        });
+        searchCache.recent.ts = Date.now();
+        updateSearchSectionMarkup('recent', buildRecentSectionHTML(searchCache.recent.data));
+        deleteSearchHistory(searchId);
+      }
     }
     // 포커스 복귀하여 blur→hide 방지
     const searchInput = document.getElementById('search-input');
@@ -313,15 +442,19 @@ window.addEventListener('load', () => {
     const searchContainer = document.getElementById('searchBoxContainer');
     if (!searchInput || !searchContainer) return;
 
-    // 드롭다운 생성
-    createSearchSuggestions();
+    // 빈 컨테이너만 미리 생성 (API 호출 없음)
+    ensureDropdownElements();
 
+    let refreshTimer = null;
     searchInput.addEventListener('focus', function () {
-      // 포커스 시 드롭다운 내용 갱신 (검색 기록 변동 반영)
-      if (searchSuggestionsCreated) {
-        refreshSearchSuggestions();
+      showSearchSuggestions(); // 즉시 표시 (빈 상태라도)
+      // 첫 포커스 시 데이터 로드, 이후엔 캐시 만료 시에만 갱신
+      if (!searchSuggestionsCreated) {
+        populateSearchSuggestions();
+      } else if (hasExpiredSearchSection()) {
+        clearTimeout(refreshTimer);
+        refreshTimer = setTimeout(refreshSearchSuggestions, 300);
       }
-      showSearchSuggestions();
     });
 
     searchInput.addEventListener('blur', function () {
@@ -345,7 +478,7 @@ window.addEventListener('load', () => {
     });
 
     // 검색 제안 항목 클릭 시 검색 실행 / 삭제 버튼 처리
-    searchContainer.addEventListener('click', function (e) {
+    cachedDropdown.addEventListener('click', function (e) {
       const deleteBtn = e.target.closest('[data-action="remove-recent-search"]');
       if (deleteBtn) {
         e.preventDefault();
@@ -382,63 +515,13 @@ window.addEventListener('load', () => {
   }
 
   async function refreshSearchSuggestions() {
-    const dropdown = document.getElementById('searchSuggestions');
-    if (!dropdown) return;
+    if (!cachedDropdown) return;
 
-    const [recentData, galleryData, trendingData] = await Promise.all([
-      fetchRecentSearches(),
-      fetchRecommendedGalleries(),
-      fetchTrendingKeywords()
+    await Promise.all([
+      IS_LOGGED_IN && isSectionCacheExpired('recent') ? loadSearchSection('recent', true) : Promise.resolve(),
+      isSectionCacheExpired('galleries') ? loadSearchSection('galleries', true) : Promise.resolve(),
+      isSectionCacheExpired('trending') ? loadSearchSection('trending', true) : Promise.resolve()
     ]);
-
-    let html = '';
-
-    if (IS_LOGGED_IN && recentData.length > 0) {
-      html += '<div class="search-suggest__section" id="recentSearchSection">' +
-          '<div class="search-suggest__heading">최근 검색 기록</div>' +
-          '<div class="search-suggest__grid">';
-      recentData.forEach(function (item) {
-        const thumb = createArtworkDataUri(item.keyword, item.id || 0, 236, 236);
-        html += '<div class="search-suggest__item" data-search-id="' + item.id + '">' +
-            '<img class="search-suggest__thumb" src="' + thumb + '" alt="" />' +
-            '<span class="search-suggest__text">' + item.keyword + '</span>' +
-            '<button class="search-suggest__delete" type="button" data-action="remove-recent-search" aria-label="삭제">' +
-            '<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="m12 13.41 8.3 8.3 1.4-1.42L13.42 12l8.3-8.3-1.42-1.4-8.3 8.28-8.3-8.3L2.3 3.7l8.28 8.3-8.3 8.3 1.42 1.4z"></path></svg>' +
-            '</button>' +
-            '</div>';
-      });
-      html += '</div></div>';
-    }
-
-    if (galleryData.length > 0) {
-      html += '<div class="search-suggest__section">' +
-          '<div class="search-suggest__heading">추천 예술관</div>' +
-          '<div class="search-suggest__grid">';
-      galleryData.forEach(function (item) {
-        const thumb = item.coverImage || createArtworkDataUri(item.title, item.id || 0, 236, 236);
-        html += '<div class="search-suggest__item" data-gallery-id="' + item.id + '">' +
-            '<img class="search-suggest__thumb" src="' + thumb + '" alt="" />' +
-            '<span class="search-suggest__text">' + item.title + '</span>' +
-            '</div>';
-      });
-      html += '</div></div>';
-    }
-
-    if (trendingData.length > 0) {
-      html += '<div class="search-suggest__section">' +
-          '<div class="search-suggest__heading">BIDEO 인기 탐색</div>' +
-          '<div class="search-suggest__grid">';
-      trendingData.forEach(function (item, idx) {
-        const thumb = createArtworkDataUri(item.keyword, 700 + idx, 236, 236);
-        html += '<div class="search-suggest__item search-suggest__item--small">' +
-            '<img class="search-suggest__thumb" src="' + thumb + '" alt="" />' +
-            '<span class="search-suggest__text">' + item.keyword + '</span>' +
-            '</div>';
-      });
-      html += '</div></div>';
-    }
-
-    dropdown.innerHTML = html;
   }
 
   /* 사이드 네비 관련 함수는 navigation.js 참조 */
@@ -488,7 +571,7 @@ window.addEventListener('load', () => {
         }
       } else {
         const data = await fetchWorks(currentPage, BATCH_SIZE);
-        var pins = (data.content || []).map(mapWorkToPin);
+        const pins = (data.content || []).map(mapWorkToPin);
         pins.forEach(function (p) { pinStore.set(p.id, p); });
         renderPins(pins);
         currentPage++;

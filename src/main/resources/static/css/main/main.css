@@ -2593,7 +2593,14 @@ body.closeup-open .appViewport {
     inset: 0;
     background: rgba(0,0,0,0.4);
     z-index: 670;
-    display: none;
+    visibility: hidden;
+    opacity: 0;
+    transition: opacity 0.15s;
+    will-change: opacity;
+}
+.search-overlay--visible {
+    visibility: visible;
+    opacity: 1;
 }
 
 #searchBoxContainer {
@@ -2611,8 +2618,17 @@ body.closeup-open .appViewport {
     z-index: 672;
     max-height: 600px;
     overflow-y: auto;
-    display: none;
+    visibility: hidden;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.15s;
+    will-change: opacity;
     padding-bottom: 12px;
+}
+.search-suggest--visible {
+    visibility: visible;
+    opacity: 1;
+    pointer-events: auto;
 }
 
 .search-suggest__section {
@@ -2641,6 +2657,12 @@ body.closeup-open .appViewport {
     padding: 0 16px;
 }
 
+.search-suggest__status {
+    padding: 0 16px 8px;
+    font-size: 13px;
+    color: var(--text-subtle, #6b7280);
+}
+
 .search-suggest__item {
     height: 88px;
     display: flex;
@@ -2656,6 +2678,11 @@ body.closeup-open .appViewport {
     background-color: var(--hover-bg);
 }
 
+.search-suggest__item--placeholder {
+    cursor: default;
+    pointer-events: none;
+}
+
 .search-suggest__item--small {
     height: 72px;
 }
@@ -2663,9 +2690,31 @@ body.closeup-open .appViewport {
 .search-suggest__thumb {
     width: 88px;
     height: 100%;
-    object-fit: cover;
     flex-shrink: 0;
     border-radius: 8px;
+    display: flex;
+    align-items: flex-end;
+    padding: 6px;
+    box-sizing: border-box;
+    overflow: hidden;
+}
+.search-suggest__thumb-label {
+    color: #fff;
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1.2;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 100%;
+}
+img.search-suggest__thumb {
+    padding: 0;
+    object-fit: cover;
+}
+
+.search-suggest__thumb--placeholder {
+    background: linear-gradient(135deg, #eceff3, #d9dde4);
 }
 
 .search-suggest__item--small .search-suggest__thumb {
@@ -2685,6 +2734,17 @@ body.closeup-open .appViewport {
     -webkit-box-orient: vertical;
     overflow: hidden;
     line-height: 1.3;
+}
+
+.search-suggest__text--placeholder {
+    color: transparent;
+    min-height: 16px;
+    align-self: center;
+}
+
+.search-suggest__item--placeholder .search-suggest__thumb--placeholder,
+.search-suggest__item--placeholder .search-suggest__text--placeholder {
+    animation: search-suggest-pulse 1.1s ease-in-out infinite alternate;
 }
 
 .search-suggest__delete {
@@ -2712,6 +2772,15 @@ body.closeup-open .appViewport {
 @media (hover: hover) {
     .search-suggest__item:hover .search-suggest__delete {
         visibility: visible;
+    }
+}
+
+@keyframes search-suggest-pulse {
+    from {
+        opacity: 0.45;
+    }
+    to {
+        opacity: 0.9;
     }
 }
 @media (hover: none) {
