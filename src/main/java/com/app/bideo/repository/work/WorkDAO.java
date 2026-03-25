@@ -97,6 +97,30 @@ public class WorkDAO {
         return workMapper.selectWorkCommentsByWorkId(workId);
     }
 
+    public boolean existsLike(Long memberId, Long workId) {
+        return workMapper.existsWorkLike(memberId, workId);
+    }
+
+    public void saveLike(Long memberId, Long workId) {
+        workMapper.insertWorkLike(memberId, workId);
+    }
+
+    public void deleteLike(Long memberId, Long workId) {
+        workMapper.deleteWorkLike(memberId, workId);
+    }
+
+    public void increaseLikeCount(Long workId) {
+        workMapper.increaseWorkLikeCount(workId);
+    }
+
+    public void decreaseLikeCount(Long workId) {
+        workMapper.decreaseWorkLikeCount(workId);
+    }
+
+    public int findLikeCount(Long workId) {
+        return Optional.ofNullable(workMapper.selectWorkLikeCount(workId)).orElse(0);
+    }
+
     // 작품 기본 정보 수정
     public void setWork(WorkDTO workDTO) {
         workMapper.updateWork(workDTO);

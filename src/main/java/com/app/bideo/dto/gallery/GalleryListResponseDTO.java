@@ -17,5 +17,6 @@ public class GalleryListResponseDTO {
     private Integer workCount;
     private Integer likeCount;
     private Integer viewCount;
+    private Boolean isLiked;
     private LocalDateTime createdDatetime;
 }

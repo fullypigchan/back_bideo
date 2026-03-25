@@ -3,6 +3,7 @@ package com.app.bideo.controller.gallery;
 import com.app.bideo.dto.gallery.GalleryCreateRequestDTO;
 import com.app.bideo.dto.gallery.GalleryDetailResponseDTO;
 import com.app.bideo.dto.gallery.GalleryUpdateRequestDTO;
+import com.app.bideo.dto.common.LikeToggleResponseDTO;
 import com.app.bideo.dto.interaction.CommentCreateRequestDTO;
 import com.app.bideo.dto.interaction.CommentResponseDTO;
 import com.app.bideo.service.gallery.GalleryService;
@@ -74,5 +75,13 @@ public class GalleryAPIController {
             @RequestBody CommentCreateRequestDTO requestDTO
     ) {
         return galleryService.writeComment(id, memberId, requestDTO.getContent());
+    }
+
+    @PostMapping("/{id}/likes")
+    public LikeToggleResponseDTO toggleLike(
+            @PathVariable Long id,
+            @RequestParam(required = false) Long memberId
+    ) {
+        return galleryService.toggleLike(id, memberId);
     }
 }

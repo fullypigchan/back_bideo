@@ -30,7 +30,11 @@ public interface GalleryMapper {
 
     int deleteGalleryWorkByWorkId(@Param("workId") Long workId);
 
+    int deleteGalleryWorkByGalleryId(@Param("galleryId") Long galleryId);
+
     Long selectGalleryIdByWorkId(@Param("workId") Long workId);
+
+    List<Long> selectWorkIdsByGalleryId(@Param("galleryId") Long galleryId);
 
     void refreshGalleryWorkCount(@Param("galleryId") Long galleryId);
 
@@ -40,5 +44,16 @@ public interface GalleryMapper {
 
     List<CommentResponseDTO> selectGalleryCommentsByGalleryId(@Param("galleryId") Long galleryId);
 
-    List<GalleryListResponseDTO> selectRecommendedGalleries();
+    boolean existsGalleryLike(@Param("memberId") Long memberId, @Param("galleryId") Long galleryId);
+
+    void insertGalleryLike(@Param("memberId") Long memberId, @Param("galleryId") Long galleryId);
+
+    int deleteGalleryLike(@Param("memberId") Long memberId, @Param("galleryId") Long galleryId);
+
+    int increaseGalleryLikeCount(@Param("galleryId") Long galleryId);
+
+    int decreaseGalleryLikeCount(@Param("galleryId") Long galleryId);
+
+    Integer selectGalleryLikeCount(@Param("galleryId") Long galleryId);
+
 }
