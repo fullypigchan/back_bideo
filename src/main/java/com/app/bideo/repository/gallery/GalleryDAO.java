@@ -2,6 +2,7 @@ package com.app.bideo.repository.gallery;
 
 import com.app.bideo.domain.interaction.CommentVO;
 import com.app.bideo.dto.gallery.GalleryCreateRequestDTO;
+import com.app.bideo.dto.gallery.GalleryDetailResponseDTO;
 import com.app.bideo.dto.gallery.GalleryListResponseDTO;
 import com.app.bideo.dto.gallery.GalleryUpdateRequestDTO;
 import com.app.bideo.dto.interaction.CommentResponseDTO;
@@ -20,6 +21,10 @@ public class GalleryDAO {
 
     public void save(GalleryCreateRequestDTO galleryCreateRequestDTO) {
         galleryMapper.insertGallery(galleryCreateRequestDTO);
+    }
+
+    public Optional<GalleryDetailResponseDTO> findById(Long id) {
+        return Optional.ofNullable(galleryMapper.selectGalleryDetail(id));
     }
 
     public List<GalleryListResponseDTO> findAllByMemberId(Long memberId) {
@@ -50,8 +55,16 @@ public class GalleryDAO {
         galleryMapper.deleteGalleryWorkByWorkId(workId);
     }
 
+    public void deleteWorkLinksByGalleryId(Long galleryId) {
+        galleryMapper.deleteGalleryWorkByGalleryId(galleryId);
+    }
+
     public Optional<Long> findGalleryIdByWorkId(Long workId) {
         return Optional.ofNullable(galleryMapper.selectGalleryIdByWorkId(workId));
+    }
+
+    public List<Long> findWorkIdsByGalleryId(Long galleryId) {
+        return galleryMapper.selectWorkIdsByGalleryId(galleryId);
     }
 
     public void updateWorkCount(Long galleryId) {
@@ -70,7 +83,27 @@ public class GalleryDAO {
         return galleryMapper.selectGalleryCommentsByGalleryId(galleryId);
     }
 
-    public List<GalleryListResponseDTO> findRecommended() {
-        return galleryMapper.selectRecommendedGalleries();
+    public boolean existsLike(Long memberId, Long galleryId) {
+        return galleryMapper.existsGalleryLike(memberId, galleryId);
+    }
+
+    public void saveLike(Long memberId, Long galleryId) {
+        galleryMapper.insertGalleryLike(memberId, galleryId);
+    }
+
+    public void deleteLike(Long memberId, Long galleryId) {
+        galleryMapper.deleteGalleryLike(memberId, galleryId);
+    }
+
+    public void increaseLikeCount(Long galleryId) {
+        galleryMapper.increaseGalleryLikeCount(galleryId);
+    }
+
+    public void decreaseLikeCount(Long galleryId) {
+        galleryMapper.decreaseGalleryLikeCount(galleryId);
+    }
+
+    public int findLikeCount(Long galleryId) {
+        return Optional.ofNullable(galleryMapper.selectGalleryLikeCount(galleryId)).orElse(0);
     }
 }

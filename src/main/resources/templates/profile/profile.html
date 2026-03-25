@@ -134,7 +134,6 @@
   <div class="post-grid">
     <div class="post-item"
          th:each="work : ${works}"
-         th:if="${work.id != 10 and work.id != 1 and work.id != 6 and work.id != 7}"
          th:onclick="|openWorkDetailModal(${work.id})|"
          style="cursor:pointer;">
         <video th:if="${work.thumbnailUrl != null and !#strings.isEmpty(work.thumbnailUrl) and work.category == 'VIDEO'}"
@@ -160,16 +159,6 @@
         </div>
     </div>
     <div class="post-item" th:if="${#lists.isEmpty(works)}">
-      <a href="#" onclick="openSampleWorkModal(event)" style="display:block; width:100%; height:100%; text-decoration:none; color:inherit;">
-        <video
-          src="/images/main_vidios/BIDEO_introduce_video.mp4"
-          autoplay
-          muted
-          loop
-          playsinline
-          style="width:100%; height:100%; object-fit:cover; display:block; border-radius:inherit;"
-        ></video>
-      </a>
     </div>
   </div>
   <!-- Footer -->
@@ -213,28 +202,52 @@
         </div>
         <div class="work-detail-actions">
           <div class="work-detail-action-row">
-            <button class="work-detail-icon-btn" type="button" title="좋아요">
-              <svg aria-label="좋아요" fill="#262626" viewBox="0 0 24 24">
-                <path d="M16.792 3.904A4.989 4.989 0 0 1 21.5 9.122c0 3.072-2.652 4.959-5.197 7.222-2.512 2.243-3.865 3.469-4.303 3.752-.477-.309-2.143-1.823-4.303-3.752C5.141 14.072 2.5 12.167 2.5 9.122a4.989 4.989 0 0 1 4.708-5.218 4.21 4.21 0 0 1 3.675 1.941c.84 1.175.98 1.763 1.12 1.763s.278-.588 1.11-1.766a4.17 4.17 0 0 1 3.679-1.938m0-2a6.04 6.04 0 0 0-4.797 2.127 6.052 6.052 0 0 0-4.787-2.127A6.985 6.985 0 0 0 .5 9.122c0 3.61 2.55 5.827 5.015 7.97.283.246.569.494.853.747l1.027.918a44.998 44.998 0 0 0 3.518 3.018 2 2 0 0 0 2.174 0 45.263 45.263 0 0 0 3.626-3.115l.922-.824c.293-.26.59-.519.885-.774 2.334-2.025 4.98-4.32 4.98-7.94a6.985 6.985 0 0 0-6.708-7.218Z"/>
-              </svg>
-            </button>
-            <button class="work-detail-icon-btn" type="button" title="댓글">
-              <svg aria-label="댓글 달기" fill="#262626" viewBox="0 0 24 24">
-                <path d="M20.656 17.008a9.993 9.993 0 1 0-3.59 3.615L22 22Z" fill="none" stroke="currentColor" stroke-linejoin="round" stroke-width="2"/>
-              </svg>
-            </button>
-            <button class="work-detail-icon-btn" type="button" title="공유">
-              <svg aria-label="게시물 공유" fill="#262626" viewBox="0 0 24 24">
-                <line fill="none" stroke="currentColor" stroke-linejoin="round" stroke-width="2" x1="22" x2="9.218" y1="3" y2="10.083"/>
-                <polygon fill="none" points="11.698 20.334 22 3.001 2 3.001 9.218 10.084 11.698 20.334" stroke="currentColor" stroke-linejoin="round" stroke-width="2"/>
-              </svg>
-            </button>
-            <button class="work-detail-text-btn" type="button" title="거래하기">
-              <span>거래하기</span>
-            </button>
-            <button class="work-detail-text-btn" type="button" title="경매하기">
-              <span>경매하기</span>
-            </button>
+            <div class="work-detail-like-stack">
+              <button class="work-detail-icon-btn work-detail-like-btn" id="workDetailLikeButton" type="button" title="좋아요" aria-pressed="false">
+                <svg aria-label="좋아요" viewBox="0 0 24 24">
+                  <path d="M16.792 3.904A4.989 4.989 0 0 1 21.5 9.122c0 3.072-2.652 4.959-5.197 7.222-2.512 2.243-3.865 3.469-4.303 3.752-.477-.309-2.143-1.823-4.303-3.752C5.141 14.072 2.5 12.167 2.5 9.122a4.989 4.989 0 0 1 4.708-5.218 4.21 4.21 0 0 1 3.675 1.941c.84 1.175.98 1.763 1.12 1.763s.278-.588 1.11-1.766a4.17 4.17 0 0 1 3.679-1.938m0-2a6.04 6.04 0 0 0-4.797 2.127 6.052 6.052 0 0 0-4.787-2.127A6.985 6.985 0 0 0 .5 9.122c0 3.61 2.55 5.827 5.015 7.97.283.246.569.494.853.747l1.027.918a44.998 44.998 0 0 0 3.518 3.018 2 2 0 0 0 2.174 0 45.263 45.263 0 0 0 3.626-3.115l.922-.824c.293-.26.59-.519.885-.774 2.334-2.025 4.98-4.32 4.98-7.94a6.985 6.985 0 0 0-6.708-7.218Z"/>
+                </svg>
+              </button>
+              <span class="work-detail-like-count" id="workDetailLikeCount">0</span>
+            </div>
+            <div class="work-detail-like-stack">
+              <button class="work-detail-icon-btn" type="button" title="댓글">
+                <svg aria-label="댓글 달기" fill="#262626" viewBox="0 0 24 24">
+                  <path d="M20.656 17.008a9.993 9.993 0 1 0-3.59 3.615L22 22Z" fill="none" stroke="currentColor" stroke-linejoin="round" stroke-width="2"/>
+                </svg>
+              </button>
+              <span class="work-detail-like-count" id="workDetailCommentSummary">댓글 0개</span>
+            </div>
+            <div class="work-detail-like-stack">
+              <button class="work-detail-icon-btn" id="workDetailShareButton" type="button" title="공유">
+                <svg aria-label="게시물 공유" fill="#262626" viewBox="0 0 24 24">
+                  <line fill="none" stroke="currentColor" stroke-linejoin="round" stroke-width="2" x1="22" x2="9.218" y1="3" y2="10.083"/>
+                  <polygon fill="none" points="11.698 20.334 22 3.001 2 3.001 9.218 10.084 11.698 20.334" stroke="currentColor" stroke-linejoin="round" stroke-width="2"/>
+                </svg>
+              </button>
+              <span class="work-detail-like-count">공유하기</span>
+            </div>
+            <div class="work-detail-like-stack" id="workDetailTradeWrap">
+              <button class="work-detail-icon-btn" id="workDetailTradeButton" type="button" title="거래하기" aria-label="거래하기">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M8 3 4 7l4 4"></path>
+                  <path d="M4 7h16"></path>
+                  <path d="m16 21 4-4-4-4"></path>
+                  <path d="M20 17H4"></path>
+                </svg>
+              </button>
+              <span class="work-detail-like-count">거래하기</span>
+            </div>
+            <div class="work-detail-like-stack" id="workDetailAuctionWrap">
+              <button class="work-detail-icon-btn" id="workDetailAuctionButton" type="button" title="경매하기" aria-label="경매하기">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M3.85 8.62a4 4 0 0 1 4.78-4.77 4 4 0 0 1 6.74 0 4 4 0 0 1 4.78 4.78 4 4 0 0 1 0 6.74 4 4 0 0 1-4.77 4.78 4 4 0 0 1-6.75 0 4 4 0 0 1-4.78-4.77 4 4 0 0 1 0-6.76Z"></path>
+                  <path d="M16 8h-6a2 2 0 1 0 0 4h4a2 2 0 1 1 0 4H8"></path>
+                  <path d="M12 18V6"></path>
+                </svg>
+              </button>
+              <span class="work-detail-like-count" id="workDetailAuctionLabel">경매하기</span>
+            </div>
           </div>
           <div class="work-detail-price" id="workDetailPrice"></div>
         </div>
@@ -244,32 +257,35 @@
         <button type="button" id="workDetailCommentSubmit">게시</button>
       </div>
       <div class="work-detail-comment-list">
-        <div class="work-detail-comment-item">
-          <img class="work-detail-comment-avatar" src="/images/BIDEO_LOGO/BIDEO_favicon.png" alt="system">
-          <div class="work-detail-comment-copy">
-            <div class="work-detail-comment-body">
-              <span class="work-detail-comment-name">system</span>
-              <span class="work-detail-comment-text" id="workDetailStats">좋아요 0 · 조회수 0</span>
-            </div>
-            <div class="work-detail-comment-meta">
-              <span id="workDetailCommentCount">댓글 0</span>
-            </div>
-          </div>
-        </div>
-        <div class="work-detail-comment-item">
-          <img class="work-detail-comment-avatar" src="/images/BIDEO_LOGO/BIDEO_favicon.png" alt="status">
-          <div class="work-detail-comment-copy">
-            <div class="work-detail-comment-body">
-              <span class="work-detail-comment-name">status</span>
-              <span class="work-detail-comment-text" id="workDetailStatus">ACTIVE</span>
-            </div>
-            <div class="work-detail-comment-meta">
-              <span id="workDetailLicense">LICENSE</span>
-            </div>
-          </div>
-        </div>
         <div id="workDetailCommentsContainer"></div>
       </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay work-share-modal-overlay" id="workShareModal" onclick="closeModal('workShareModal', event)">
+  <div class="work-share-modal" role="dialog" aria-label="공유">
+    <div class="work-share-modal__header">
+      <div class="work-share-modal__spacer"></div>
+      <h2 class="work-share-modal__title">공유</h2>
+      <button class="work-share-modal__close" type="button" aria-label="닫기" onclick="closeModal('workShareModal')">
+        <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+          <polyline fill="none" points="20.643 3.357 12 12 3.353 20.647" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="3"></polyline>
+          <line fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="3" x1="20.649" x2="3.354" y1="20.649" y2="3.354"></line>
+        </svg>
+      </button>
+    </div>
+    <div class="work-share-modal__receiver">
+      <label class="work-share-modal__label" for="workShareSearchInput">받는 사람:</label>
+      <div class="work-share-modal__receiver-body">
+        <div class="work-share-modal__chips" id="workShareSelectedList"></div>
+        <input class="work-share-modal__search" id="workShareSearchInput" type="text" placeholder="검색..." autocomplete="off">
+      </div>
+    </div>
+    <div class="work-share-modal__list" id="workShareRecipientList"></div>
+    <div class="work-share-modal__footer">
+      <input class="work-share-modal__message" id="workShareMessageInput" type="text" placeholder="메시지 쓰기..." autocomplete="off">
+      <button class="work-share-modal__send" id="workShareSendButton" type="button">보내기</button>
     </div>
   </div>
 </div>
@@ -579,7 +595,8 @@
                        data-gallery-owner=${gallery.memberNickname},
                        data-gallery-work-count=${gallery.workCount},
                        data-gallery-like-count=${gallery.likeCount},
-                       data-gallery-view-count=${gallery.viewCount}"
+                       data-gallery-view-count=${gallery.viewCount},
+                       data-gallery-liked=${gallery.isLiked}"
               onclick="openGalleryCloseupModal(this)">
         <div class="gallery-list-modal__thumb">
           <img th:if="${gallery.coverImage != null and !#strings.isEmpty(gallery.coverImage)}"
@@ -593,7 +610,7 @@
           <span th:text="|작품 ${gallery.workCount != null ? gallery.workCount : 0}개|">작품 0개</span>
         </div>
       </button>
-      <div class="gallery-list-modal__empty" th:if="${#lists.isEmpty(galleries)}">
+      <div class="gallery-list-modal__empty" id="galleryListModalEmpty" th:if="${#lists.isEmpty(galleries)}">
         등록된 예술관이 없습니다.
       </div>
     </div>
@@ -642,7 +659,8 @@
               <strong id="galleryCloseupWorkCount">0</strong>
               <span>작품</span>
             </div>
-            <div class="gallery-closeup__stat">
+            <div class="gallery-closeup__stat gallery-closeup__stat-button" id="galleryCloseupLikeButton" aria-pressed="false" title="좋아요">
+              <span class="gallery-closeup__stat-icon"></span>
               <strong id="galleryCloseupLikeCount">0</strong>
               <span>좋아요</span>
             </div>
@@ -659,7 +677,7 @@
           </button>
           <div class="closeup__collapsible-content gallery-closeup__collapsible-content" id="galleryCloseupCommentsContainer">
             <div class="closeup__comment-item">
-              <img class="closeup__comment-avatar" src="/images/BIDEO_LOGO/BIDEO_favicon.png" alt="comment">
+              <img class="closeup__comment-avatar" src="//이미지" alt="comment">
               <div class="closeup__comment-body">
                 <div class="closeup__comment-meta">
                   <span class="closeup__comment-author">BIDEO</span>
