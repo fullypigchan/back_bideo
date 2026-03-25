@@ -387,4 +387,52 @@
         order by c.created_datetime asc, c.id asc
     </select>
 
+    <select id="existsWorkLike" resultType="boolean">
+        select exists (
+            select 1
+            from tbl_work_like
+            where member_id = #{memberId}
+              and work_id = #{workId}
+        )
+    </select>
+
+    <insert id="insertWorkLike">
+        insert into tbl_work_like (
+            member_id, work_id
+        ) values (
+            #{memberId}, #{workId}
+        )
+    </insert>
+
+    <delete id="deleteWorkLike">
+        delete from tbl_work_like
+        where member_id = #{memberId}
+          and work_id = #{workId}
+    </delete>
+
+    <update id="increaseWorkLikeCount">
+        update tbl_work
+        set
+            like_count = coalesce(like_count, 0) + 1,
+            updated_datetime = now()
+        where id = #{workId}
+          and deleted_datetime is null
+    </update>
+
+    <update id="decreaseWorkLikeCount">
+        update tbl_work
+        set
+            like_count = greatest(coalesce(like_count, 0) - 1, 0),
+            updated_datetime = now()
+        where id = #{workId}
+          and deleted_datetime is null
+    </update>
+
+    <select id="selectWorkLikeCount" resultType="int">
+        select coalesce(like_count, 0)
+        from tbl_work
+        where id = #{workId}
+          and deleted_datetime is null
+    </select>
+
 </mapper>

@@ -22,6 +22,7 @@
             g.work_count,
             g.like_count,
             g.view_count,
+            false as is_liked,
             g.created_datetime
         from tbl_gallery g
         left join tbl_member m on g.member_id = m.id
@@ -76,6 +77,11 @@
         where work_id = #{workId}
     </delete>
 
+    <delete id="deleteGalleryWorkByGalleryId">
+        delete from tbl_gallery_work
+        where gallery_id = #{galleryId}
+    </delete>
+
     <select id="selectGalleryIdByWorkId" resultType="long">
         select gallery_id
         from tbl_gallery_work
@@ -84,13 +90,23 @@
         limit 1
     </select>
 
+    <select id="selectWorkIdsByGalleryId" resultType="long">
+        select work_id
+        from tbl_gallery_work
+        where gallery_id = #{galleryId}
+        order by id asc
+    </select>
+
     <update id="refreshGalleryWorkCount">
         update tbl_gallery
         set
             work_count = (
                 select count(*)
-                from tbl_gallery_work
-                where gallery_id = #{galleryId}
+                from tbl_gallery_work gw
+                join tbl_work w on gw.work_id = w.id
+                where gw.gallery_id = #{galleryId}
+                  and w.deleted_datetime is null
+                  and w.status != 'DELETED'
             ),
             updated_datetime = now()
         where id = #{galleryId}
@@ -138,23 +154,56 @@
         order by c.created_datetime asc, c.id asc
     </select>
 
-    <select id="selectRecommendedGalleries" resultType="GalleryListResponseDTO">
-        select
-            g.id,
-            g.title,
-            g.description,
-            g.cover_image,
-            m.nickname as member_nickname,
-            g.work_count,
-            g.like_count,
-            g.view_count,
-            g.created_datetime
-        from tbl_gallery g
-        left join tbl_member m on g.member_id = m.id
-        where g.deleted_datetime is null
-          and g.status = 'EXHIBITING'
-        order by g.view_count desc, g.like_count desc
-        limit 8
+    <select id="existsGalleryLike" resultType="boolean">
+        select exists (
+            select 1
+            from tbl_gallery_like
+            where member_id = #{memberId}
+              and gallery_id = #{galleryId}
+        )
+    </select>
+
+    <insert id="insertGalleryLike">
+        insert into tbl_gallery_like (
+            member_id, gallery_id
+        ) values (
+            #{memberId}, #{galleryId}
+        )
+    </insert>
+
+    <delete id="deleteGalleryLike">
+        delete from tbl_gallery_like
+        where member_id = #{memberId}
+          and gallery_id = #{galleryId}
+    </delete>
+
+    <update id="increaseGalleryLikeCount">
+        update tbl_gallery
+        set
+            like_count = coalesce(like_count, 0) + 1,
+            updated_datetime = now()
+        where id = #{galleryId}
+          and deleted_datetime is null
+          and status != 'DELETED'
+    </update>
+
+    <update id="decreaseGalleryLikeCount">
+        update tbl_gallery
+        set
+            like_count = greatest(coalesce(like_count, 0) - 1, 0),
+            updated_datetime = now()
+        where id = #{galleryId}
+          and deleted_datetime is null
+          and status != 'DELETED'
+    </update>
+
+    <select id="selectGalleryLikeCount" resultType="int">
+        select coalesce(like_count, 0)
+        from tbl_gallery
+        where id = #{galleryId}
+          and deleted_datetime is null
+          and status != 'DELETED'
+
     </select>
 
 </mapper>

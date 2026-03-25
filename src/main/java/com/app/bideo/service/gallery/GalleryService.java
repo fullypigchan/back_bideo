@@ -2,12 +2,14 @@ package com.app.bideo.service.gallery;
 
 import com.app.bideo.auth.member.CustomUserDetails;
 import com.app.bideo.domain.interaction.CommentVO;
+import com.app.bideo.dto.common.LikeToggleResponseDTO;
 import com.app.bideo.dto.gallery.GalleryCreateRequestDTO;
 import com.app.bideo.dto.gallery.GalleryListResponseDTO;
 import com.app.bideo.dto.gallery.GalleryUpdateRequestDTO;
 import com.app.bideo.dto.interaction.CommentResponseDTO;
 import com.app.bideo.repository.gallery.GalleryDAO;
 import com.app.bideo.repository.work.WorkDAO;
+import com.app.bideo.service.interaction.CommentService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -26,6 +28,7 @@ public class GalleryService {
 
     private final GalleryDAO galleryDAO;
     private final WorkDAO workDAO;
+    private final CommentService commentService;
 
     // 예술관 등록
     public void write(Long memberId, GalleryCreateRequestDTO requestDTO, MultipartFile coverFile) {
@@ -39,7 +42,10 @@ public class GalleryService {
     // 프로필 하이라이트용 예술관 목록 조회
     @Transactional(readOnly = true)
     public List<GalleryListResponseDTO> getProfileGalleries() {
-        return galleryDAO.findAllByMemberId(resolveMemberId(null));
+        List<GalleryListResponseDTO> galleries = galleryDAO.findAllByMemberId(resolveMemberId(null));
+        Long memberId = resolveAuthenticatedMemberId();
+        galleries.forEach(gallery -> gallery.setIsLiked(memberId != null && galleryDAO.existsLike(memberId, gallery.getId())));
+        return galleries;
     }
 
     // 추천 예술관 (인기순)
@@ -68,6 +74,16 @@ public class GalleryService {
     public void delete(Long id, Long memberId) {
         Long resolvedMemberId = resolveMemberId(memberId);
         validateGalleryOwner(id, resolvedMemberId);
+        List<Long> workIds = galleryDAO.findWorkIdsByGalleryId(id);
+
+        workIds.forEach(workId -> {
+            workDAO.deleteFilesByWorkId(workId);
+            workDAO.deleteTagsByWorkId(workId);
+            galleryDAO.deleteWorkLinkByWorkId(workId);
+            workDAO.delete(workId);
+        });
+
+        galleryDAO.deleteWorkLinksByGalleryId(id);
         galleryDAO.delete(id);
     }
 
@@ -75,7 +91,12 @@ public class GalleryService {
     public List<CommentResponseDTO> getComments(Long id) {
         galleryDAO.findMemberIdById(id)
                 .orElseThrow(() -> new IllegalArgumentException("gallery not found"));
-        return galleryDAO.findCommentsByGalleryId(id);
+        List<CommentResponseDTO> comments = galleryDAO.findCommentsByGalleryId(id);
+        Long memberId = resolveAuthenticatedMemberId();
+        comments.forEach(comment ->
+                comment.setIsLiked(memberId != null && commentService.isLikedByCurrentMember(comment.getId()))
+        );
+        return comments;
     }
 
     public List<CommentResponseDTO> writeComment(Long galleryId, Long memberId, String content) {
@@ -99,7 +120,29 @@ public class GalleryService {
                         .build()
         );
         galleryDAO.increaseCommentCount(galleryId);
-        return galleryDAO.findCommentsByGalleryId(galleryId);
+        return getComments(galleryId);
+    }
+
+    public LikeToggleResponseDTO toggleLike(Long galleryId, Long memberId) {
+        Long resolvedMemberId = resolveMemberId(memberId);
+        galleryDAO.findMemberIdById(galleryId)
+                .orElseThrow(() -> new IllegalArgumentException("gallery not found"));
+
+        boolean liked = galleryDAO.existsLike(resolvedMemberId, galleryId);
+        if (liked) {
+            galleryDAO.deleteLike(resolvedMemberId, galleryId);
+            galleryDAO.decreaseLikeCount(galleryId);
+        } else {
+            galleryDAO.saveLike(resolvedMemberId, galleryId);
+            galleryDAO.increaseLikeCount(galleryId);
+        }
+
+        return LikeToggleResponseDTO.builder()
+                .targetId(galleryId)
+                .targetType("GALLERY")
+                .likeCount(galleryDAO.findLikeCount(galleryId))
+                .liked(!liked)
+                .build();
     }
 
     private void validateGalleryOwner(Long galleryId, Long memberId) {
@@ -115,12 +158,20 @@ public class GalleryService {
             return memberId;
         }
 
+        Long authenticatedMemberId = resolveAuthenticatedMemberId();
+        if (authenticatedMemberId != null) {
+            return authenticatedMemberId;
+        }
+
+        throw new IllegalStateException("login required");
+    }
+
+    private Long resolveAuthenticatedMemberId() {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
         if (authentication != null && authentication.getPrincipal() instanceof CustomUserDetails userDetails) {
             return userDetails.getId();
         }
-
-        throw new IllegalStateException("login required");
+        return null;
     }
 
     private String saveCoverImage(MultipartFile coverFile) {
