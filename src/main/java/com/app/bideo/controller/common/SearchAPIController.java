@@ -48,10 +48,6 @@ public class SearchAPIController {
         return ResponseEntity.ok().build();
     }
 
-    @GetMapping("/recommended-galleries")
-    public List<SearchGallerySuggestionDTO> recommendedGalleries() {
-        return galleryService.getRecommendedSearchGalleries();
-    }
 
     @GetMapping("/trending")
     public List<TrendingKeywordDTO> trendingKeywords() {
