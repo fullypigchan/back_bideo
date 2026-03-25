@@ -1,22 +1,18 @@
 package com.app.bideo.service.gallery;
 
 import com.app.bideo.auth.member.CustomUserDetails;
+import com.app.bideo.domain.gallery.GalleryTagVO;
 import com.app.bideo.domain.interaction.CommentVO;
 import com.app.bideo.dto.common.LikeToggleResponseDTO;
 import com.app.bideo.dto.gallery.GalleryCreateRequestDTO;
 import com.app.bideo.dto.gallery.GalleryDetailResponseDTO;
 import com.app.bideo.dto.gallery.GalleryListResponseDTO;
-import com.app.bideo.dto.gallery.SearchGalleryCoverDataDTO;
-import com.app.bideo.dto.gallery.SearchGalleryCoverResponseDTO;
-import com.app.bideo.dto.gallery.SearchGallerySuggestionDTO;
 import com.app.bideo.dto.gallery.GalleryUpdateRequestDTO;
 import com.app.bideo.dto.interaction.CommentResponseDTO;
 import com.app.bideo.repository.gallery.GalleryDAO;
 import com.app.bideo.repository.work.WorkDAO;
 import com.app.bideo.service.interaction.CommentService;
 import lombok.RequiredArgsConstructor;
-import org.springframework.cache.annotation.CacheEvict;
-import org.springframework.cache.annotation.Cacheable;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
@@ -24,9 +20,12 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.Base64;
+import java.util.Collections;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Objects;
 
 @Service
 @RequiredArgsConstructor
@@ -38,13 +37,13 @@ public class GalleryService {
     private final CommentService commentService;
 
     // 예술관 등록
-    @CacheEvict(value = {"recommendedGalleries", "recommendedSearchGalleries"}, allEntries = true)
     public void write(Long memberId, GalleryCreateRequestDTO requestDTO, MultipartFile coverFile) {
         requestDTO.setMemberId(resolveMemberId(memberId));
         requestDTO.setCoverImage(saveCoverImage(coverFile));
         requestDTO.setAllowComment(requestDTO.getAllowComment() != null ? requestDTO.getAllowComment() : true);
         requestDTO.setShowSimilar(requestDTO.getShowSimilar() != null ? requestDTO.getShowSimilar() : true);
         galleryDAO.save(requestDTO);
+        saveTags(requestDTO.getId(), requestDTO.getTagIds(), requestDTO.getTagNames());
     }
 
     // 프로필 하이라이트용 예술관 목록 조회
@@ -59,34 +58,21 @@ public class GalleryService {
     // 예술관 상세 조회
     @Transactional(readOnly = true)
     public GalleryDetailResponseDTO getGalleryDetail(Long id) {
-        return galleryDAO.findById(id)
+        GalleryDetailResponseDTO detail = galleryDAO.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("gallery not found"));
+        detail.setTags(galleryDAO.findTagsByGalleryId(id));
+
+        Long memberId = resolveAuthenticatedMemberId();
+        detail.setIsLiked(memberId != null && galleryDAO.existsLike(memberId, id));
+        return detail;
     }
 
     // 추천 예술관 (인기순)
-    @Cacheable("recommendedGalleries")
     @Transactional(readOnly = true)
     public List<GalleryListResponseDTO> getRecommendedGalleries() {
         return galleryDAO.findRecommended();
     }
 
-    @Cacheable("recommendedSearchGalleries")
-    @Transactional(readOnly = true)
-    public List<SearchGallerySuggestionDTO> getRecommendedSearchGalleries() {
-        return galleryDAO.findRecommendedSearchGalleries().stream()
-                .map(this::withSearchCoverUrl)
-                .toList();
-    }
-
-    @Transactional(readOnly = true)
-    public SearchGalleryCoverResponseDTO getSearchGalleryCover(Long id) {
-        return galleryDAO.findSearchGalleryCover(id)
-                .filter(data -> data.getCoverImage() != null && !data.getCoverImage().isBlank())
-                .map(this::decodeSearchGalleryCover)
-                .orElse(null);
-    }
-
-    @CacheEvict(value = {"recommendedGalleries", "recommendedSearchGalleries"}, allEntries = true)
     public void update(Long id, Long memberId, GalleryUpdateRequestDTO requestDTO, MultipartFile coverFile) {
         Long resolvedMemberId = resolveMemberId(memberId);
         validateGalleryOwner(id, resolvedMemberId);
@@ -102,9 +88,10 @@ public class GalleryService {
         }
 
         galleryDAO.update(id, requestDTO);
+        galleryDAO.deleteTagsByGalleryId(id);
+        saveTags(id, requestDTO.getTagIds(), requestDTO.getTagNames());
     }
 
-    @CacheEvict(value = {"recommendedGalleries", "recommendedSearchGalleries"}, allEntries = true)
     public void delete(Long id, Long memberId) {
         Long resolvedMemberId = resolveMemberId(memberId);
         validateGalleryOwner(id, resolvedMemberId);
@@ -226,44 +213,48 @@ public class GalleryService {
         }
     }
 
-    private SearchGallerySuggestionDTO withSearchCoverUrl(SearchGallerySuggestionDTO dto) {
-        return SearchGallerySuggestionDTO.builder()
-                .id(dto.getId())
-                .title(dto.getTitle())
-                .hasCoverImage(dto.getHasCoverImage())
-                .coverImageUrl(Boolean.TRUE.equals(dto.getHasCoverImage()) ? "/image/gallery-cover/" + dto.getId() : null)
-                .build();
+    private void saveTags(Long galleryId, List<Long> tagIds, List<String> tagNames) {
+        List<Long> resolvedTagIds = new ArrayList<>();
+        if (tagIds != null) {
+            resolvedTagIds.addAll(tagIds);
+        }
+        resolvedTagIds.addAll(resolveTagIds(tagNames));
+
+        new LinkedHashSet<>(resolvedTagIds).forEach(tagId ->
+                galleryDAO.saveTag(galleryId, tagId)
+        );
     }
 
-    private SearchGalleryCoverResponseDTO decodeSearchGalleryCover(SearchGalleryCoverDataDTO data) {
-        String raw = data.getCoverImage();
-        if (!raw.startsWith("data:")) {
-            throw new IllegalStateException("gallery cover image is not a data uri");
+    private List<Long> resolveTagIds(List<String> tagNames) {
+        List<String> safeTagNames = tagNames == null ? Collections.emptyList() : tagNames;
+
+        return safeTagNames.stream()
+                .map(this::normalizeTagName)
+                .filter(Objects::nonNull)
+                .distinct()
+                .map(this::findOrCreateTagId)
+                .toList();
+    }
+
+    private String normalizeTagName(String tagName) {
+        if (tagName == null) {
+            return null;
         }
 
-        int commaIndex = raw.indexOf(',');
-        if (commaIndex < 0) {
-            throw new IllegalStateException("gallery cover image payload is invalid");
+        String normalized = tagName.trim();
+        if (normalized.startsWith("#")) {
+            normalized = normalized.substring(1).trim();
         }
 
-        String metadata = raw.substring(5, commaIndex);
-        String payload = raw.substring(commaIndex + 1);
-        String contentType = metadata;
-        if (metadata.contains(";")) {
-            contentType = metadata.substring(0, metadata.indexOf(';'));
-        }
-        if (contentType.isBlank()) {
-            contentType = "application/octet-stream";
-        }
+        return normalized.isBlank() ? null : normalized;
+    }
 
-        byte[] bytes = metadata.contains(";base64")
-                ? Base64.getDecoder().decode(payload)
-                : payload.getBytes(StandardCharsets.UTF_8);
-
-        return SearchGalleryCoverResponseDTO.builder()
-                .contentType(contentType)
-                .bytes(bytes)
-                .cacheControl("public, max-age=300")
-                .build();
+    private Long findOrCreateTagId(String tagName) {
+        return galleryDAO.findTagIdByName(tagName)
+                .orElseGet(() -> {
+                    galleryDAO.saveTagName(tagName);
+                    return galleryDAO.findTagIdByName(tagName)
+                            .orElseThrow(() -> new IllegalStateException("tag save failed"));
+                });
     }
 }
