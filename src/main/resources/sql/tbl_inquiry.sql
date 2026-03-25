@@ -3,15 +3,16 @@
 -- ----------------------------------------------------------
 drop table if exists tbl_inquiry cascade;
 
-create table tbl_inquiry (
-    id          bigint generated always as identity primary key,
-    member_id   bigint       null,
-    category    varchar(255)  null,
-    content     varchar(255) not null,
-    reply       text         null,
-    status      varchar(255)  not null default 'PENDING',
-    created_datetime  timestamp    not null default now(),
-    updated_datetime  timestamp    not null default now(),
+create table tbl_inquiry
+(
+    id               bigint generated always as identity primary key,
+    member_id        bigint       null,
+    category         varchar(255) null,
+    content          varchar(255) not null,
+    reply            text         null,
+    status           varchar(255) not null default 'PENDING',
+    created_datetime timestamp    not null default now(),
+    updated_datetime timestamp    not null default now(),
 
     constraint fk_inquiry_member foreign key (member_id)
         references tbl_member (id)
