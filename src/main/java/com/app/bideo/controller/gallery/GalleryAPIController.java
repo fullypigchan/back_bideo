@@ -1,6 +1,7 @@
 package com.app.bideo.controller.gallery;
 
 import com.app.bideo.dto.gallery.GalleryCreateRequestDTO;
+import com.app.bideo.dto.gallery.GalleryDetailResponseDTO;
 import com.app.bideo.dto.gallery.GalleryUpdateRequestDTO;
 import com.app.bideo.dto.common.LikeToggleResponseDTO;
 import com.app.bideo.dto.interaction.CommentCreateRequestDTO;
@@ -27,6 +28,11 @@ import java.util.List;
 public class GalleryAPIController {
 
     private final GalleryService galleryService;
+
+    @GetMapping("/{id}")
+    public GalleryDetailResponseDTO detail(@PathVariable Long id) {
+        return galleryService.getGalleryDetail(id);
+    }
 
     @PostMapping
     public void write(

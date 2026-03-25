@@ -4,6 +4,7 @@ import com.app.bideo.auth.member.CustomUserDetails;
 import com.app.bideo.domain.interaction.CommentVO;
 import com.app.bideo.dto.common.LikeToggleResponseDTO;
 import com.app.bideo.dto.gallery.GalleryCreateRequestDTO;
+import com.app.bideo.dto.gallery.GalleryDetailResponseDTO;
 import com.app.bideo.dto.gallery.GalleryListResponseDTO;
 import com.app.bideo.dto.gallery.GalleryUpdateRequestDTO;
 import com.app.bideo.dto.interaction.CommentResponseDTO;
@@ -46,6 +47,13 @@ public class GalleryService {
         Long memberId = resolveAuthenticatedMemberId();
         galleries.forEach(gallery -> gallery.setIsLiked(memberId != null && galleryDAO.existsLike(memberId, gallery.getId())));
         return galleries;
+    }
+
+    // 예술관 상세 조회
+    @Transactional(readOnly = true)
+    public GalleryDetailResponseDTO getGalleryDetail(Long id) {
+        return galleryDAO.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("gallery not found"));
     }
 
     // 추천 예술관 (인기순)
