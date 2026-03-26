@@ -69,4 +69,20 @@
             updated_datetime = now()
         where id = #{memberId}
     </update>
+    <select id="searchByKeyword" resultType="com.app.bideo.dto.member.MemberListResponseDTO">
+        SELECT
+            m.id,
+            m.nickname,
+            m.profile_image,
+            m.creator_verified,
+            m.creator_tier,
+            m.follower_count
+        FROM tbl_member m
+        WHERE m.status = 'ACTIVE'
+          AND m.id != #{currentMemberId}
+          AND m.nickname ILIKE '%' || #{keyword} || '%'
+        ORDER BY m.follower_count DESC NULLS LAST
+        LIMIT #{limit}
+    </select>
+
 </mapper>

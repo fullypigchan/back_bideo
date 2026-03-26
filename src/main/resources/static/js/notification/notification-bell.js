@@ -56,7 +56,8 @@ document.addEventListener("DOMContentLoaded", () => {
     function getTargetUrl(item) {
         if (!item.targetType || !item.targetId) return null;
         switch (item.targetType) {
-            case "WORK": return "/work/" + item.targetId;
+            case "WORK": return "/work/detail/" + item.targetId;
+            case "AUCTION": return "/auction/auction-detail/" + item.targetId;
             case "GALLERY": return "/gallery/" + item.targetId;
             case "CONTEST": return "/contest/" + item.targetId;
             case "MEMBER": return "/profile/" + item.targetId;

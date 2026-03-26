@@ -1,7 +1,7 @@
 // ─── 공유 유틸리티 (main.js, closeup.js에서도 사용) ──────
-var LOCAL_PROFILE_IMAGE = '/images/BIDEO_LOGO/BIDEO_favicon.png';
+const LOCAL_PROFILE_IMAGE = '/images/BIDEO_LOGO/BIDEO_favicon.png';
 
-var placeholderPalettes = [
+const placeholderPalettes = [
   ['#0f172a', '#1d4ed8', '#f59e0b'],
   ['#111827', '#7c3aed', '#f97316'],
   ['#1f2937', '#059669', '#facc15'],
@@ -242,17 +242,17 @@ window.addEventListener('load', () => {
     const nav = document.getElementById('VerticalNavContent');
     if (!nav) return;
 
-    var activeLabel = '홈';
-    var pathname = window.location.pathname;
+    let activeLabel = '홈';
+    const pathname = window.location.pathname;
     if (pathname.indexOf('/contest') === 0) activeLabel = '공모전';
 
-    var targetBtn = Array.from(nav.querySelectorAll('a[aria-label], button[aria-label]')).find(function (btn) {
+    const targetBtn = Array.from(nav.querySelectorAll('a[aria-label], button[aria-label]')).find(function (btn) {
       return btn.getAttribute('aria-label') === activeLabel && btn.querySelector('svg path');
     });
 
     if (!targetBtn) return;
 
-    var path = targetBtn.querySelector('svg path');
+    const path = targetBtn.querySelector('svg path');
     if (path && navIconMap[activeLabel]) path.setAttribute('d', navIconMap[activeLabel].active);
   }
 
@@ -540,6 +540,96 @@ window.addEventListener('load', () => {
   }
 
   // ─── 메시지 패널 헬퍼 함수들 ─────────────────────────
+  // WebSocket 관련 변수
+  let msgStompClient = null;
+  let msgSubscribedRooms = new Set();
+  let msgCurrentRoomId = null;
+
+  function msgTimeAgo(dateStr) {
+    if (!dateStr) return '';
+    const now = new Date();
+    const date = new Date(dateStr);
+    const diff = Math.floor((now - date) / 1000);
+    if (diff < 60) return '방금';
+    if (diff < 3600) return Math.floor(diff / 60) + '분';
+    if (diff < 86400) return Math.floor(diff / 3600) + '시간';
+    if (diff < 604800) return Math.floor(diff / 86400) + '일';
+    return (date.getMonth() + 1) + '/' + date.getDate();
+  }
+
+  function msgEscapeHtml(str) {
+    if (!str) return '';
+    return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  function msgConnectWebSocket() {
+    if (msgStompClient && msgStompClient.connected) return;
+    try {
+      const socket = new SockJS('/ws');
+      msgStompClient = Stomp.over(socket);
+      msgStompClient.debug = null;
+      msgStompClient.connect({}, function() {}, function() {
+        setTimeout(msgConnectWebSocket, 5000);
+      });
+    } catch (e) { /* ignore */ }
+  }
+
+  function msgSubscribeRoom(roomId) {
+    if (!msgStompClient || !msgStompClient.connected) return;
+    if (msgSubscribedRooms.has(roomId)) return;
+    msgStompClient.subscribe('/topic/room.' + roomId, function(frame) {
+      const msg = JSON.parse(frame.body);
+      if (msgCurrentRoomId === roomId) {
+        const chatBody = document.querySelector('#message-menu .msg-chat-body');
+        if (chatBody) {
+          chatBody.insertAdjacentHTML('beforeend', buildChatBubble(msg));
+          chatBody.scrollTop = chatBody.scrollHeight;
+          fetch('/api/messages/rooms/' + roomId + '/read', { method: 'PATCH' }).catch(function(){});
+        }
+      }
+      updateMsgUnreadBadge();
+    });
+    msgSubscribedRooms.add(roomId);
+  }
+
+  function updateMsgUnreadBadge() {
+    fetch('/api/messages/unread-count')
+      .then(function(res) { return res.ok ? res.json() : null; })
+      .then(function(data) {
+        if (!data) return;
+        const btn = document.querySelector('[aria-label="메시지"]');
+        if (!btn) return;
+        let badge = btn.querySelector('.msg-unread-badge');
+        const count = data.count || 0;
+        if (count > 0) {
+          if (!badge) {
+            badge = document.createElement('span');
+            badge.className = 'msg-unread-badge';
+            badge.style.cssText = 'position:absolute;top:4px;right:4px;background:#e60023;color:#fff;border-radius:50%;min-width:18px;height:18px;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;padding:0 4px;';
+            const wrap = btn.querySelector('.side-nav__icon-wrap');
+            if (wrap) { wrap.style.position = 'relative'; wrap.appendChild(badge); }
+          }
+          badge.textContent = count > 99 ? '99+' : count;
+          badge.style.display = 'flex';
+        } else if (badge) {
+          badge.style.display = 'none';
+        }
+      }).catch(function(){});
+  }
+
+  function buildChatBubble(msg) {
+    const currentUserId = window.__bideoUserId;
+    const isMine = msg.senderId === currentUserId;
+    if (isMine) {
+      return '<div style="align-self:flex-end;background:#111;color:#fff;padding:10px 14px;border-radius:18px;max-width:75%;font-size:14px;line-height:1.4;margin-bottom:4px;">' + msgEscapeHtml(msg.content) + '</div>';
+    }
+    const avatar = msg.senderProfileImage || createAvatarDataUri(msg.senderNickname || '', 0);
+    return '<div style="display:flex;gap:8px;align-items:flex-end;margin-bottom:4px;">' +
+      '<img src="' + msgEscapeHtml(avatar) + '" style="width:24px;height:24px;border-radius:50%;flex-shrink:0;">' +
+      '<div style="background:#efefef;padding:10px 14px;border-radius:18px;max-width:75%;font-size:14px;color:#111;line-height:1.4;">' + msgEscapeHtml(msg.content) + '</div>' +
+      '</div>';
+  }
+
   function buildMessageListHTML() {
     return '<style>#message-menu *:focus { outline: none; }</style>' +
         '<div class="side-panel">' +
@@ -559,294 +649,145 @@ window.addEventListener('load', () => {
         '</div>' +
         '<h3 class="side-panel__msg-section-title">메시지</h3>' +
         '<div data-test-id="conversation-list-container" class="side-panel__msg-list">' +
-        '<div data-test-id="conversation-list-item" class="side-panel__msg-item" role="button" tabindex="0">' +
-        '<img alt="찬호" class="side-panel__msg-avatar" draggable="false" loading="lazy" src="' + createAvatarDataUri('정찬호', 22) + '">' +
-        '<div class="side-panel__msg-info">' +
-        '<div class="side-panel__msg-name">찬호</div>' +
-        '<div class="side-panel__msg-preview">ㅎㅇ</div>' +
-        '</div>' +
-        '<div class="side-panel__msg-time">3일</div>' +
-        '</div>' +
-        '</div>' +
-        '<div data-test-id="invite-friends-cta" class="side-panel__msg-invite" role="button" tabindex="0">' +
-        '<div class="side-panel__msg-invite-icon">' +
-        '<svg aria-label="친구 초대하기" class="icon-svg display-block icon-color-default" height="20" role="img" viewBox="0 0 24 24" width="20"><path d="M12 11a5.5 5.5 0 1 0 0-11 5.5 5.5 0 0 0 0 11M8.5 5.5a3.5 3.5 0 1 1 7 0 3.5 3.5 0 0 1-7 0M3 23h9v-2H4.06a8 8 0 0 1 11.05-6.37l.78-1.85A10 10 0 0 0 2 22a1 1 0 0 0 1 1m17-3h4v-2h-4v-4h-2v4h-4v2h4v4h2z"></path></svg>' +
-        '</div>' +
-        '<div class="side-panel__msg-invite-text">' +
-        '<div class="side-panel__msg-invite-title">친구 초대하기</div>' +
-        '<div class="side-panel__msg-invite-desc">연결하여 채팅을 시작하세요.</div>' +
-        '</div>' +
+        '<div class="side-panel__msg-loading" style="text-align:center;padding:32px;color:#767676;">불러오는 중...</div>' +
         '</div>' +
         '</div>' +
         '</div>' +
         '</div>';
   }
 
-  function buildInviteFriendsHTML() {
-    return '<div class="layout-box" style="padding-right:12px">' +
-        '<div class="layout-box u-margin-top-300 u-margin-inline-600 u-pad-block-300 u-margin-bottom-600">' +
-        '<div class="flex-row spacing-inline-zero spacing-block-zero u-row-bottom-40 justify-between items-center">' +
-        '<h2 class="heading-margin-reset text-antialiased text-default heading-400 heading-align-start heading-break-word">메시지</h2>' +
-        '<div class="flex-row spacing-inline-zero spacing-block-zero u-row-bottom-40">' +
-        '<button aria-label="닫기" class="button-reset invite-close-btn" tabindex="0" type="button">' +
-        '<div class="button-reset-inner interactive-scale cursor-pointer-inner">' +
-        '<div class="icon-container rounded-200 icon-surface-transparent" style="height:28px;width:28px">' +
-        '<svg aria-hidden="true" class="icon-svg display-block icon-color-default" height="16" role="img" viewBox="0 0 24 24" width="16"><path d="m12 13.41 8.3 8.3 1.4-1.42L13.42 12l8.3-8.3-1.42-1.4-8.3 8.28-8.3-8.3L2.3 3.7l8.28 8.3-8.3 8.3 1.42 1.4z"></path></svg>' +
-        '</div>' +
-        '</div>' +
-        '</button>' +
-        '</div>' +
-        '</div>' +
-        '</div>' +
-        '</div>' +
-        '<div class="layout-box" style="height:calc(100% - 64px)">' +
-        '<div data-test-id="invite-follow-container" class="layout-box u-pad-block-200 u-scroll-y" style="height:100%">' +
-        '<div class="flex-row spacing-inline-zero spacing-block-zero flex-column items-center">' +
-        '<div data-test-id="invite-follow-image" class="layout-box">' +
-        '<svg fill="none" height="150" viewBox="0 0 150 150" width="150" xmlns="http://www.w3.org/2000/svg">' +
-        '<mask fill="white" id="path-1-inside-1"><rect height="68" rx="1.5" transform="rotate(-5.75723 15 54.2305)" width="97" x="15" y="54.2305"></rect></mask>' +
-        '<rect fill="#111" height="68" mask="url(#path-1-inside-1)" rx="1.5" stroke="black" stroke-width="4.5" transform="rotate(-5.75723 15 54.2305)" width="97" x="15" y="54.2305"></rect>' +
-        '<mask fill="white" id="path-2-inside-2"><rect height="68" rx="1.5" transform="rotate(-5.75723 17.5 49.7305)" width="97" x="17.5" y="49.7305"></rect></mask>' +
-        '<rect fill="white" height="68" mask="url(#path-2-inside-2)" rx="1.5" stroke="black" stroke-width="4.5" transform="rotate(-5.75723 17.5 49.7305)" width="97" x="17.5" y="49.7305"></rect>' +
-        '<rect fill="#111" height="68" rx="1.5" width="97" x="31.5" y="33.5"></rect>' +
-        '<mask fill="white" id="path-4-inside-3"><rect height="68" rx="1.5" width="97" x="35" y="30"></rect></mask>' +
-        '<rect fill="white" height="68" mask="url(#path-4-inside-3)" rx="1.5" stroke="black" stroke-width="4.5" width="97" x="35" y="30"></rect>' +
-        '<path d="M53.2202 52.4096C55.9628 52.2376 61.2672 49.7768 60.8053 41.3432C60.7979 41.2391 60.7916 41.1373 60.7863 41.0379C60.7935 41.1405 60.7998 41.2423 60.8053 41.3432C61.046 44.7072 62.4395 50.4178 66.2377 51.8918C66.5071 51.9964 66.5162 52.4985 66.2483 52.6067C63.977 53.524 61.432 56.1946 61.047 62.5048C61.0452 62.5383 61.0433 62.5714 61.0412 62.6043C61.0431 62.571 61.045 62.5378 61.047 62.5048C61.2353 59.0423 59.937 52.3302 53.2202 52.4096Z" fill="white" stroke="#111" stroke-linejoin="round" stroke-width="2.25"></path>' +
-        '<path d="M45.9884 84.0499C48.4393 82.8984 52.0472 81.1962 53.3819 81.9567C55.0503 82.9072 54.0414 84.662 56.0184 84.4518C57.9955 84.2415 62.2058 80.961 63.6828 82.0552C65.1598 83.1495 64.9285 84.3355 67.523 83.9681C69.5986 83.6742 74.5646 83.4435 76.3261 83.1347" stroke="#111" stroke-linecap="round" stroke-width="2.25"></path>' +
-        '<path d="M46.4777 76.2726C48.9286 75.121 54.1641 73.008 55.4988 73.7685C57.1672 74.719 55.6807 77.192 57.6577 76.9817C59.6348 76.7715 65.5416 72.9418 67.0186 74.036C68.4956 75.1303 66.3418 77.0185 68.9363 76.6511C71.012 76.3572 75.0538 75.6661 76.8153 75.3573" stroke="#111" stroke-linecap="round" stroke-width="2.25"></path>' +
-        '<path d="M88.0762 38.6367L88.2995 89.6365" stroke="black" stroke-width="2.25"></path>' +
-        '</svg>' +
-        '</div>' +
-        '<div data-test-id="education-text-block" class="layout-box section-padding-x-400 u-content-center section-padding-y-400 flex-row-container">' +
-        '<div class="flex-row spacing-inline-zero spacing-block-zero flex-column">' +
-        '<div class="layout-box display-block-wrapper u-margin-bottom-400">' +
-        '<h2 class="heading-margin-reset text-antialiased text-default heading-300 text-center-heading heading-break-word">함께 아이디어 찾기</h2>' +
-        '</div>' +
-        '<div class="text-default text-align-start text-break-word text-with-inline-icon text-antialiased text-body-300 text-body-300-regular">' +
-        '<ol class="list-padding-reset list-first-item-indent list-margin-reset">' +
-        '<li class="list-spaced-item list-decimal" style="font-size:var(--sema-font-size-body-300)">' +
-        '<div class="text-default text-align-start text-break-word text-with-inline-icon text-antialiased text-body-300 text-body-300-regular">' +
-        '<div class="text-default text-align-start text-break-word text-with-inline-icon text-antialiased text-body-300 text-body-300-strong">링크를 공유합니다.</div>' +
-        '<div class="text-default text-align-start text-break-word text-with-inline-icon text-antialiased text-body-100-leading text-body-100 text-body-100-regular">회원님에게 메시지를 보내려는 친구는 링크를 통해 회원님을 팔로우해야 합니다.</div>' +
-        '</div>' +
-        '</li>' +
-        '<li class="list-spaced-item list-decimal" style="font-size:var(--sema-font-size-body-300)">' +
-        '<div class="text-default text-align-start text-break-word text-with-inline-icon text-antialiased text-body-300 text-body-300-regular">' +
-        '<div class="text-default text-align-start text-break-word text-with-inline-icon text-antialiased text-body-300 text-body-300-strong">친구들이 회원님을 팔로우합니다.</div>' +
-        '<div class="text-default text-align-start text-break-word text-with-inline-icon text-antialiased text-body-100-leading text-body-100 text-body-100-regular">각 링크는 한 번에 몇 명의 친구만 사용할 수 있지만 필요한 만큼 받을 수 있습니다.</div>' +
-        '</div>' +
-        '</li>' +
-        '<li class="list-spaced-item list-decimal" style="font-size:var(--sema-font-size-body-300)">' +
-        '<div class="text-default text-align-start text-break-word text-with-inline-icon text-antialiased text-body-300 text-body-300-regular">' +
-        '<div class="text-default text-align-start text-break-word text-with-inline-icon text-antialiased text-body-300 text-body-300-strong">친구를 팔로우하세요!</div>' +
-        '<div class="text-default text-align-start text-break-word text-with-inline-icon text-antialiased text-body-100-leading text-body-100 text-body-100-regular">서로 팔로우하면 다이렉트 메시지를 통해 아이디어, 목표 등을 공유할 수 있습니다.</div>' +
-        '</div>' +
-        '</li>' +
-        '</ol>' +
-        '</div>' +
-        '</div>' +
-        '</div>' +
-        '</div>' +
-        '<div class="layout-box">' +
-        '<div class="flex-row spacing-inline-zero spacing-block-zero justify-start u-row-bottom-40 u-overflow-hidden u-items-stretch">' +
-        '<div class="layout-box justify-start u-row-bottom-40 VVzx5u u-width-quarter u-margin-bottom-neg-200 u-pad-block-200 u-flex-wrap u-pad-inline-100 flex-row-container" style="height:100%;width:100%">' +
-        '<div class="flex-row spacing-inline-zero spacing-block-zero justify-start flex-column items-center" style="width:94px">' +
-        '<div class="layout-box u-margin-bottom-200">' +
-        '<div class="layout-box u-pad-inline-300 u-margin-bottom-100 justify-center flex-row-container">' +
-        '<div data-test-id="copy-link-share-icon" class="layout-box" style="cursor:pointer;height:64px">' +
-        '<button aria-label="프로필 링크를 클립보드에 복사하세요." class="button-reset" tabindex="0" type="button">' +
-        '<div class="button-reset-inner interactive-scale cursor-pointer-inner">' +
-        '<div class="icon-container u-rounded-500 icon-surface-secondary" style="height:64px;width:64px">' +
-        '<svg aria-hidden="true" class="u-flip-rtl icon-svg display-block icon-color-default" height="24" role="img" viewBox="0 0 24 24" width="24"><path d="M19.83 2.41a4 4 0 0 0-5.66 0l-2.26 2.26a4 4 0 0 0-.48 5.07l1.47-1.47a2 2 0 0 1 .43-2.18l2.26-2.26a2 2 0 0 1 2.82 0l1.76 1.76a2 2 0 0 1 0 2.82l-2.26 2.26a2 2 0 0 1-2.18.43l-1.47 1.47a4 4 0 0 0 5.07-.48l2.26-2.26a4 4 0 0 0 0-5.66zM2.4 14.17a4 4 0 0 0 0 5.66l1.76 1.76a4 4 0 0 0 5.66 0l2.26-2.26a4 4 0 0 0 .48-5.07l-1.47 1.47a2 2 0 0 1-.43 2.18L8.4 20.17a2 2 0 0 1-2.82 0l-1.76-1.76a2 2 0 0 1 0-2.82l2.26-2.26a2 2 0 0 1 2.18-.43l1.47-1.47a4 4 0 0 0-5.07.48zm6.3 2.54 8-8-1.42-1.42-8 8z"></path></svg>' +
-        '</div>' +
-        '</div>' +
-        '</button>' +
-        '</div>' +
-        '</div>' +
-        '<div class="text-default text-center text-break-word text-with-inline-icon text-antialiased text-body-100-leading text-body-100 text-body-100-regular">링크 복사</div>' +
-        '</div>' +
-        '</div>' +
-        '<div class="flex-row spacing-inline-zero spacing-block-zero justify-start flex-column items-center" style="width:94px">' +
-        '<div class="layout-box u-margin-bottom-200">' +
-        '<div class="layout-box u-pad-inline-300 u-margin-bottom-100 justify-center flex-row-container">' +
-        '<a aria-label="이메일로 공유" class="link-reset text-color-inherit text-no-underline interactive-scale button-reset-inner cursor-pointer-inner" href="#" tabindex="0">' +
-        '<div class="icon-container u-rounded-500 icon-surface-secondary" style="height:64px;width:64px">' +
-        '<svg aria-hidden="true" class="icon-svg display-block icon-color-default" height="24" role="img" viewBox="0 0 24 24" width="24"><path d="M0 7a4 4 0 0 1 4-4h16a4 4 0 0 1 4 4v10a4 4 0 0 1-4 4H4a4 4 0 0 1-4-4zm2 0c0 .25.14.48.36.6L12 12.86l9.64-5.26A.7.7 0 0 0 22 7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2m10 8.14L2 9.68V17c0 1.1.9 2 2 2h16a2 2 0 0 0 2-2V9.68z"></path></svg>' +
-        '</div>' +
-        '</a>' +
-        '</div>' +
-        '<div class="text-default text-center text-break-word text-with-inline-icon text-antialiased text-body-100-leading text-body-100 text-body-100-regular">이메일</div>' +
-        '</div>' +
-        '</div>' +
-        '</div>' +
-        '</div>' +
-        '</div>' +
-        '<div class="layout-box" style="height:32px"></div>' +
-        '</div>' +
-        '</div>';
-  }
+  function loadMessageRooms(panel) {
+    const listContainer = panel.querySelector('[data-test-id="conversation-list-container"]');
+    if (!listContainer) return;
 
-  function buildNewMessageHTML() {
-    return '<div class="layout-box" style="padding-right:12px">' +
-        '<div class="layout-box u-pad-inline-200 u-pad-block-200 items-center flex-row-container">' +
-        '<div class="layout-box u-margin-inline-end-100">' +
-        '<button aria-label="받은 편지함으로 돌아가기" class="button-reset" tabindex="0" type="button">' +
-        '<div class="button-reset-inner interactive-scale cursor-pointer-inner">' +
-        '<div class="icon-container rounded-400-surface icon-surface-transparent" style="height:48px;width:48px">' +
-        '<svg aria-hidden="true" class="u-flip-rtl icon-svg display-block icon-color-default" height="24" role="img" viewBox="0 0 24 24" width="24"><path d="m6.41 12 10.3-10.3L15.29.3 3.6 12l11.7 11.7 1.42-1.4z"></path></svg>' +
-        '</div>' +
-        '</div>' +
-        '</button>' +
-        '</div>' +
-        '<div class="flex-row spacing-inline-zero spacing-block-zero justify-start u-row-bottom-40 u-items-stretch flex-grow">' +
-        '<h2 class="heading-margin-reset text-antialiased text-default heading-400 heading-align-start heading-break-word">새 메시지</h2>' +
-        '</div>' +
-        '<div id="new-message-next-button" tabindex="0" class="layout-box">' +
-        '<button class="u-floating-border-shell cursor-pointer interactive-scale u-pill-button-shell u-disabled-surface u-inline-block" disabled type="button">' +
-        '<div class="u-center-flex-wrap">' +
-        '<div class="text-disabled text-center ui-antialiased text-ui-200 text-ui-200-leading">다음</div>' +
-        '</div>' +
-        '</button>' +
-        '</div>' +
-        '</div>' +
-        '</div>' +
-        '<section aria-label="수신자 검색 또는 선택" class="layout-box u-pad-inline-200 u-pad-block-200">' +
-        '<div class="layout-box iWgz2P u-visually-hidden">' +
-        '<div class="text-default text-align-start text-break-word text-with-inline-icon text-antialiased text-body-300 text-body-300-regular">메시지 수신자를 선택하는 대화 상자가 표시됩니다. 검색 필드를 사용하여 이름이나 이메일로 연락처를 찾거나 추천 연락처 목록에서 선택합니다.</div>' +
-        '</div>' +
-        '<div class="layout-box u-margin-bottom-200 u-pad-inline-200">' +
-        '<div>' +
-        '<div class="isolate-layer">' +
-        '<div aria-hidden="true" class="input-icon-leading-shell input-icon-position-start">' +
-        '<div>' +
-        '<svg aria-hidden="true" class="icon-svg display-block icon-color-default" height="16" role="img" viewBox="0 0 24 24" width="16"><path d="M17.33 18.74a10 10 0 1 1 1.41-1.41l4.47 4.47-1.41 1.41zM11 3a8 8 0 1 0 0 16 8 8 0 0 0 0-16"></path></svg>' +
-        '</div>' +
-        '</div>' +
-        '<input aria-label="검색 필드" autocomplete="off" class="input-shell-block text-ellipsis text-clamp-box bg-default-surface text-default-color input-border-interactive input-control-surface text-body-300 text-body-300-regular input-pad-block-large input-pad-inline-start-icon input-pad-inline-end" enterkeyhint="search" id="contactSearch" placeholder="이름 또는 이메일 검색" type="search" value="">' +
-        '</div>' +
-        '</div>' +
-        '</div>' +
-        '<div class="layout-box u-margin-bottom-200 u-pad-block-200 u-scroll-y" style="height:calc(100vh - 222px)">' +
-        '<div class="layout-box section-padding-x-400 u-pad-block-300">' +
-        '<h3 class="heading-margin-reset text-antialiased text-default heading-300 heading-align-start heading-break-word"><span class="text-default text-align-start text-break-word text-with-inline-icon text-antialiased text-body-300 text-body-300-regular">추천</span></h3>' +
-        '<div aria-atomic="true" aria-live="assertive" class="layout-box iWgz2P u-visually-hidden">1개 검색 결과가 있습니다.</div>' +
-        '</div>' +
-        '<div aria-checked="false" aria-disabled="false" class="interactive-scale u-rounded-none u-focus-ring width-full cursor-pointer new-msg-contact" role="checkbox" tabindex="0">' +
-        '<div class="layout-box surface-default u-pad-inline-200 rounded-400 u-pad-block-200 items-center flex-row-container">' +
-        '<div class="layout-box u-margin-inline-200 spacing-inline-end-200">' +
-        '<div class="avatar-frame avatar-size-48" data-test-id="gestalt-avatar-svg">' +
-        '<div class="overflow-hidden-relative rounded-circle will-change-transform">' +
-        '<div>' +
-        '<div class="layout-box position-relative" style="background-color:var(--hover-bg);padding-bottom:100%">' +
-        '<img alt=" " class="profile-avatar-image" draggable="true" fetchpriority="auto" loading="auto" src="' + createAvatarDataUri('정찬호', 23) + '">' +
-        '</div>' +
-        '</div>' +
-        '<div class="avatar-overlay"></div>' +
-        '</div>' +
-        '</div>' +
-        '</div>' +
-        '<div class="flex-row u-inline-gap-50 u-stack-gap-50 flex-column justify-center flex-grow">' +
-        '<div class="slot-block">' +
-        '<div class="text-default text-align-start text-break-word text-clamp-box text-with-inline-icon text-antialiased text-body-300 text-body-300-strong" title="정찬호" style="-webkit-line-clamp:1">정찬호</div>' +
-        '</div>' +
-        '<div class="slot-block">' +
-        '<div class="text-default text-align-start text-break-word text-clamp-box text-with-inline-icon text-antialiased text-body-300 text-body-300-regular" title="@chanho8629" style="-webkit-line-clamp:1">@chanho8629</div>' +
-        '</div>' +
-        '</div>' +
-        '<div class="layout-box" style="width:24px"></div>' +
-        '</div>' +
-        '</div>' +
-        '</div>' +
-        '</section>';
-  }
-
-  function bindInviteEvents(panel) {
-    const chatContainer = panel.querySelector('#full-height-inbox-panel > div');
-    if (!chatContainer) return;
-
-    const closeBtn = chatContainer.querySelector('.invite-close-btn');
-    if (closeBtn) {
-      closeBtn.addEventListener('click', function (ev) {
-        ev.stopPropagation();
-        panel.remove();
-        resetAllNavIcons();
-      });
-    }
-
-    const copyBtn = chatContainer.querySelector('[data-test-id="copy-link-share-icon"] button');
-    if (copyBtn) {
-      copyBtn.addEventListener('click', function (ev) {
-        ev.stopPropagation();
-        const profileUrl = window.location.origin + '/profile';
-        navigator.clipboard.writeText(profileUrl).catch(function () {
-        });
-        showToast('클립보드에 공유할 링크를 복사했습니다');
-      });
-    }
-
-    const emailBtn = chatContainer.querySelector('[aria-label="이메일로 공유"]');
-    if (emailBtn) {
-      emailBtn.addEventListener('click', function (ev) {
-        ev.preventDefault();
-        ev.stopPropagation();
-        showEmailInviteModal();
-      });
-    }
-  }
-
-  function bindNewMessageEvents(container, panel, btn) {
-    const backBtn = container.querySelector('[aria-label="받은 편지함으로 돌아가기"]');
-    if (backBtn) {
-      backBtn.addEventListener('click', function (ev) {
-        ev.stopPropagation();
-        panel.remove();
-        resetAllNavIcons();
-        btn.click();
-      });
-    }
-
-    const contactItem = container.querySelector('.new-msg-contact');
-    const nextBtn = container.querySelector('#new-message-next-button button');
-    const contactInner = contactItem ? contactItem.querySelector('.rounded-400') : null;
-    if (contactItem && contactInner) {
-      contactItem.addEventListener('mouseenter', function () {
-        contactInner.classList.add('u-bg-secondary');
-      });
-      contactItem.addEventListener('mouseleave', function () {
-        contactInner.classList.remove('u-bg-secondary');
-      });
-      contactItem.style.cursor = 'pointer';
-    }
-
-    const checkArea = contactItem.querySelector('div[style="width:24px"]');
-    if (contactItem && nextBtn) {
-      contactItem.addEventListener('click', function () {
-        const isChecked = this.getAttribute('aria-checked') === 'true';
-        this.setAttribute('aria-checked', String(!isChecked));
-        if (!isChecked) {
-          if (checkArea) {
-            checkArea.innerHTML = '<svg aria-hidden="true" class="icon-svg display-block icon-color-neutral" height="16" role="img" viewBox="0 0 24 24" width="16"><path d="m12 13.41 8.3 8.3 1.4-1.42L13.42 12l8.3-8.3-1.42-1.4-8.3 8.28-8.3-8.3L2.3 3.7l8.28 8.3-8.3 8.3 1.42 1.4z"></path></svg>';
-          }
-          nextBtn.disabled = false;
-          nextBtn.classList.remove('u-disabled-surface');
-          nextBtn.style.backgroundColor = 'var(--primary-color)';
-          nextBtn.style.cursor = 'pointer';
-          nextBtn.style.pointerEvents = 'auto';
-          nextBtn.querySelector('.text-disabled').style.color = '#111';
-        } else {
-          if (checkArea) checkArea.innerHTML = '';
-          nextBtn.disabled = true;
-          nextBtn.classList.add('u-disabled-surface');
-          nextBtn.style.backgroundColor = '';
-          nextBtn.style.cursor = '';
-          nextBtn.style.pointerEvents = '';
-          nextBtn.querySelector('.text-disabled').style.color = '';
+    fetch('/api/messages/rooms')
+      .then(function(res) { return res.ok ? res.json() : []; })
+      .then(function(rooms) {
+        if (!rooms || rooms.length === 0) {
+          listContainer.innerHTML = '<div style="text-align:center;padding:32px;color:#767676;font-size:14px;">아직 메시지가 없습니다.</div>';
+          return;
         }
+        let html = '';
+        rooms.forEach(function(room) {
+          const partner = room.members && room.members[0];
+          const name = partner ? msgEscapeHtml(partner.nickname) : '알 수 없음';
+          const avatar = partner && partner.profileImage ? msgEscapeHtml(partner.profileImage) : createAvatarDataUri(name, room.id % 5);
+          const preview = msgEscapeHtml(room.lastMessage || '');
+          const time = msgTimeAgo(room.lastMessageAt);
+          const unread = room.unreadCount > 0 ? '<span style="background:#e60023;color:#fff;border-radius:50%;min-width:18px;height:18px;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;padding:0 4px;">' + (room.unreadCount > 99 ? '99+' : room.unreadCount) + '</span>' : '';
+          html += '<div data-test-id="conversation-list-item" class="side-panel__msg-item" role="button" tabindex="0" data-room-id="' + room.id + '" data-partner-name="' + name + '" data-partner-avatar="' + msgEscapeHtml(avatar) + '">' +
+            '<img alt="' + name + '" class="side-panel__msg-avatar" draggable="false" loading="lazy" src="' + avatar + '">' +
+            '<div class="side-panel__msg-info">' +
+            '<div class="side-panel__msg-name">' + name + '</div>' +
+            '<div class="side-panel__msg-preview">' + preview + '</div>' +
+            '</div>' +
+            '<div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;">' +
+            '<div class="side-panel__msg-time">' + time + '</div>' +
+            unread +
+            '</div>' +
+            '</div>';
+          msgSubscribeRoom(room.id);
+        });
+        listContainer.innerHTML = html;
+      })
+      .catch(function() {
+        listContainer.innerHTML = '<div style="text-align:center;padding:32px;color:#767676;font-size:14px;">메시지를 불러올 수 없습니다.</div>';
       });
-    }
+  }
 
-    const searchInput = container.querySelector('#contactSearch');
-    if (searchInput) searchInput.focus();
+  function openChatDetail(panel, roomId, partnerName, partnerAvatar) {
+    msgCurrentRoomId = roomId;
+    msgSubscribeRoom(roomId);
+
+    const sidePanel = panel.querySelector('.side-panel');
+    if (!sidePanel) return;
+
+    sidePanel.innerHTML =
+      '<div class="side-panel__header" style="padding:12px 16px;border-bottom:1px solid #efefef;display:flex;align-items:center;gap:12px;">' +
+      '<button class="msg-back-btn button-reset" style="background:none;border:none;cursor:pointer;padding:4px;" tabindex="0">' +
+      '<svg height="20" viewBox="0 0 24 24" width="20"><path d="m6.41 12 10.3-10.3L15.29.3 3.6 12l11.7 11.7 1.42-1.4z"></path></svg>' +
+      '</button>' +
+      '<img src="' + msgEscapeHtml(partnerAvatar) + '" style="width:32px;height:32px;border-radius:50%;">' +
+      '<span style="font-weight:700;font-size:16px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + msgEscapeHtml(partnerName) + '</span>' +
+      '<button aria-label="닫기" class="side-panel__close button-reset" style="background:none;border:none;cursor:pointer;padding:4px;" tabindex="0">' +
+      '<svg height="16" viewBox="0 0 24 24" width="16"><path d="m12 13.41 8.3 8.3 1.4-1.42L13.42 12l8.3-8.3-1.42-1.4-8.3 8.28-8.3-8.3L2.3 3.7l8.28 8.3-8.3 8.3 1.42 1.4z"></path></svg>' +
+      '</button>' +
+      '</div>' +
+      '<div class="msg-chat-body" style="flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:4px;">' +
+      '<div style="text-align:center;padding:32px;color:#767676;">불러오는 중...</div>' +
+      '</div>' +
+      '<div style="padding:12px 16px;border-top:1px solid #efefef;background:#fff;">' +
+      '<form class="msg-send-form" style="display:flex;align-items:center;background:#efefef;border-radius:24px;padding:4px 4px 4px 16px;gap:8px;">' +
+      '<input type="text" class="msg-send-input" placeholder="메시지 보내기" style="border:none;background:transparent;flex:1;outline:none;font-size:15px;padding:8px 0;" autocomplete="off">' +
+      '<button type="submit" class="button-reset" style="width:40px;height:40px;background:none;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;">' +
+      '<svg height="20" viewBox="0 0 24 24" width="20" fill="#111"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"></path></svg>' +
+      '</button>' +
+      '</form>' +
+      '</div>';
+
+    // 메시지 로드
+    const chatBody = sidePanel.querySelector('.msg-chat-body');
+    fetch('/api/messages/rooms/' + roomId + '/messages')
+      .then(function(res) { return res.ok ? res.json() : []; })
+      .then(function(messages) {
+        if (messages.length === 0) {
+          chatBody.innerHTML = '<div style="text-align:center;padding:32px;color:#767676;font-size:14px;">첫 메시지를 보내보세요!</div>';
+        } else {
+          chatBody.innerHTML = messages.map(buildChatBubble).join('');
+          chatBody.scrollTop = chatBody.scrollHeight;
+        }
+      })
+      .catch(function() {
+        chatBody.innerHTML = '<div style="text-align:center;padding:32px;color:#767676;">메시지를 불러올 수 없습니다.</div>';
+      });
+
+    // 읽음 처리
+    fetch('/api/messages/rooms/' + roomId + '/read', { method: 'PATCH' }).catch(function(){});
+    updateMsgUnreadBadge();
+
+    // 전송 이벤트
+    const form = sidePanel.querySelector('.msg-send-form');
+    const input = sidePanel.querySelector('.msg-send-input');
+    form.addEventListener('submit', function(ev) {
+      ev.preventDefault();
+      const content = input.value.trim();
+      if (!content) return;
+      input.value = '';
+      fetch('/api/messages/rooms/' + roomId + '/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: content })
+      }).then(function(res) { return res.ok ? res.json() : null; })
+        .then(function(msg) {
+          if (!msg) return;
+          // WebSocket이 브로드캐스트 하지만, 연결 안 되어 있을 경우 직접 추가
+          if (!msgStompClient || !msgStompClient.connected) {
+            chatBody.insertAdjacentHTML('beforeend', buildChatBubble(msg));
+            chatBody.scrollTop = chatBody.scrollHeight;
+          }
+        }).catch(function(){});
+    });
+
+    // 뒤로 가기
+    sidePanel.querySelector('.msg-back-btn').addEventListener('click', function(ev) {
+      ev.stopPropagation();
+      msgCurrentRoomId = null;
+      sidePanel.innerHTML = '';
+      panel.querySelector('.side-panel') || panel.appendChild(document.createElement('div'));
+      // 패널 전체를 다시 렌더링
+      const nav = document.getElementById('VerticalNavContent');
+      panel.remove();
+      resetAllNavIcons();
+      document.querySelector('[aria-label="메시지"]').click();
+    });
+
+    // 닫기
+    sidePanel.querySelector('.side-panel__close').addEventListener('click', function(ev) {
+      ev.stopPropagation();
+      msgCurrentRoomId = null;
+      panel.remove();
+      resetAllNavIcons();
+    });
   }
 
   // ─── 메시지 패널 ─────────────────────────────────────
@@ -859,6 +800,7 @@ window.addEventListener('load', () => {
       const existing = document.getElementById('message-menu');
       if (existing) {
         existing.remove();
+        msgCurrentRoomId = null;
         resetAllNavIcons();
         return;
       }
@@ -877,35 +819,142 @@ window.addEventListener('load', () => {
       });
       nav.after(panel);
 
+      // 채팅방 목록 API 로드
+      loadMessageRooms(panel);
+
+      // 닫기 버튼
       panel.querySelector('[aria-label="닫기"]').addEventListener('click', function (e) {
         e.stopPropagation();
+        msgCurrentRoomId = null;
         panel.remove();
         resetAllNavIcons();
       });
 
-      // ── 친구 초대하기 클릭 → 초대 패널로 전환 ──
-      const inviteBtn = panel.querySelector('[data-test-id="invite-friends-cta"]');
-      if (inviteBtn) {
-        inviteBtn.addEventListener('click', function (e) {
-          e.stopPropagation();
-          const chatContainer = panel.querySelector('#full-height-inbox-panel > div');
-          if (!chatContainer) return;
-          chatContainer.innerHTML = buildInviteFriendsHTML();
-          bindInviteEvents(panel);
-        });
-      }
-
-      // ── 새 메시지 버튼 클릭 → 새 메시지 작성 패널로 전환 ──
+      // ── 새 메시지 버튼 클릭 → 새 메시지 작성 패널 (API 검색) ──
       const newMsgBtn = panel.querySelector('[data-test-id="compose-new-message-button"]');
       if (newMsgBtn) {
         newMsgBtn.addEventListener('click', function (e) {
           e.stopPropagation();
-          const container = panel.querySelector('[data-test-id="full-height-inbox-container"]');
-          if (!container) return;
-          container.innerHTML = buildNewMessageHTML();
-          bindNewMessageEvents(container, panel, btn);
+          openNewMessagePanel(panel, btn);
         });
       }
+
+      // ── 대화방 아이템 클릭 이벤트 위임 ──
+      const listContainer = panel.querySelector('[data-test-id="conversation-list-container"]');
+      if (listContainer) {
+        listContainer.addEventListener('click', function (ev) {
+          const item = ev.target.closest('[data-test-id="conversation-list-item"]');
+          if (!item) return;
+          ev.stopPropagation();
+          const roomId = parseInt(item.getAttribute('data-room-id'), 10);
+          const partnerName = item.getAttribute('data-partner-name');
+          const partnerAvatar = item.getAttribute('data-partner-avatar');
+          openChatDetail(panel, roomId, partnerName, partnerAvatar);
+        });
+      }
+    });
+  }
+
+  // ─── 새 메시지 패널 (API 검색) ────────────────────────
+  function openNewMessagePanel(panel, msgBtn) {
+    const sidePanel = panel.querySelector('.side-panel');
+    if (!sidePanel) return;
+
+    sidePanel.innerHTML =
+      '<div class="side-panel__header" style="padding:12px 16px;border-bottom:1px solid #efefef;display:flex;align-items:center;gap:12px;">' +
+      '<button class="msg-back-btn button-reset" style="background:none;border:none;cursor:pointer;padding:4px;" tabindex="0">' +
+      '<svg height="20" viewBox="0 0 24 24" width="20"><path d="m6.41 12 10.3-10.3L15.29.3 3.6 12l11.7 11.7 1.42-1.4z"></path></svg>' +
+      '</button>' +
+      '<span style="font-weight:700;font-size:16px;flex:1;">새 메시지</span>' +
+      '<button aria-label="닫기" class="side-panel__close button-reset" style="background:none;border:none;cursor:pointer;padding:4px;" tabindex="0">' +
+      '<svg height="16" viewBox="0 0 24 24" width="16"><path d="m12 13.41 8.3 8.3 1.4-1.42L13.42 12l8.3-8.3-1.42-1.4-8.3 8.28-8.3-8.3L2.3 3.7l8.28 8.3-8.3 8.3 1.42 1.4z"></path></svg>' +
+      '</button>' +
+      '</div>' +
+      '<div style="padding:12px 16px;">' +
+      '<div style="background:#efefef;border-radius:24px;padding:10px 16px;display:flex;align-items:center;gap:12px;">' +
+      '<svg height="16" viewBox="0 0 24 24" width="16" style="color:#767676;flex-shrink:0;"><path d="M17.33 18.74a10 10 0 1 1 1.41-1.41l4.47 4.47-1.41 1.41zM11 3a8 8 0 1 0 0 16 8 8 0 0 0 0-16"></path></svg>' +
+      '<input type="text" class="msg-member-search" placeholder="이름 검색" style="border:none;background:transparent;flex:1;outline:none;font-size:15px;" autocomplete="off">' +
+      '</div>' +
+      '</div>' +
+      '<div class="msg-search-results" style="flex:1;overflow-y:auto;padding:0 16px;">' +
+      '<div style="text-align:center;padding:40px;color:#767676;font-size:14px;">이름을 검색하세요.</div>' +
+      '</div>';
+
+    const searchInput = sidePanel.querySelector('.msg-member-search');
+    const resultsDiv = sidePanel.querySelector('.msg-search-results');
+    let searchTimer = null;
+
+    searchInput.focus();
+
+    searchInput.addEventListener('input', function () {
+      const keyword = this.value.trim();
+      if (searchTimer) clearTimeout(searchTimer);
+      if (!keyword) {
+        resultsDiv.innerHTML = '<div style="text-align:center;padding:40px;color:#767676;font-size:14px;">이름을 검색하세요.</div>';
+        return;
+      }
+      searchTimer = setTimeout(function () {
+        fetch('/api/messages/search-members?keyword=' + encodeURIComponent(keyword))
+          .then(function (res) { return res.ok ? res.json() : []; })
+          .then(function (members) {
+            if (!members || members.length === 0) {
+              resultsDiv.innerHTML = '<div style="text-align:center;padding:40px;color:#767676;font-size:14px;">검색 결과가 없습니다.</div>';
+              return;
+            }
+            let html = '';
+            members.forEach(function (m, i) {
+              const avatar = m.profileImage ? msgEscapeHtml(m.profileImage) : createAvatarDataUri(m.nickname || '', i);
+              html += '<div class="msg-search-member" data-member-id="' + m.id + '" data-nickname="' + msgEscapeHtml(m.nickname) + '" data-avatar="' + msgEscapeHtml(avatar) + '" ' +
+                'style="display:flex;align-items:center;gap:12px;padding:10px 8px;border-radius:12px;cursor:pointer;transition:background .2s;" ' +
+                'onmouseover="this.style.background=\'#f0f0f0\'" onmouseout="this.style.background=\'transparent\'">' +
+                '<img src="' + avatar + '" style="width:44px;height:44px;border-radius:50%;object-fit:cover;">' +
+                '<div style="flex:1;overflow:hidden;">' +
+                '<div style="font-weight:600;font-size:15px;color:#111;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + msgEscapeHtml(m.nickname) + '</div>' +
+                '</div>' +
+                '</div>';
+            });
+            resultsDiv.innerHTML = html;
+          })
+          .catch(function () {
+            resultsDiv.innerHTML = '<div style="text-align:center;padding:40px;color:#767676;font-size:14px;">검색에 실패했습니다.</div>';
+          });
+      }, 300);
+    });
+
+    // 검색 결과 멤버 클릭 → 방 생성/기존방 → 채팅 상세
+    resultsDiv.addEventListener('click', function (ev) {
+      const item = ev.target.closest('.msg-search-member');
+      if (!item) return;
+      const memberId = parseInt(item.getAttribute('data-member-id'), 10);
+      const nickname = item.getAttribute('data-nickname');
+      const avatar = item.getAttribute('data-avatar');
+
+      fetch('/api/messages/rooms', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ memberIds: [memberId] })
+      })
+        .then(function (res) { return res.ok ? res.json() : null; })
+        .then(function (room) {
+          if (!room) { showToast('채팅방을 생성할 수 없습니다.'); return; }
+          openChatDetail(panel, room.id, nickname, avatar);
+        })
+        .catch(function () { showToast('오류가 발생했습니다.'); });
+    });
+
+    // 뒤로 가기
+    sidePanel.querySelector('.msg-back-btn').addEventListener('click', function (ev) {
+      ev.stopPropagation();
+      panel.remove();
+      resetAllNavIcons();
+      msgBtn.click();
+    });
+
+    // 닫기
+    sidePanel.querySelector('.side-panel__close').addEventListener('click', function (ev) {
+      ev.stopPropagation();
+      panel.remove();
+      resetAllNavIcons();
     });
   }
 
@@ -947,158 +996,8 @@ window.addEventListener('load', () => {
   initSupportButton();
   resetAllNavIcons();
 
-  // ===== [최종 작업] 통일된 상세 페이지 전환 및 복구 로직 (Pinterest 스타일) =====
-  (function () {
-    // 공통 헤더 템플릿 헬퍼
-    function getHeaderHTML(title, isChat = false, avatar = '') {
-      const avatarImg = isChat ? `<img src="${avatar}" style="width:32px; height:32px; border-radius:50%; margin-right:8px;">` : '';
-      return `
-        <div class="side-panel__header" style="padding: 16px; border-bottom:1px solid #efefef; display:flex; align-items:center; gap:12px;">
-          <button class="chat-back-btn button-reset icon-container rounded-circle" style="width:32px; height:32px;">
-            <svg height="20" viewBox="0 0 24 24" width="20"><path d="m6.41 12 10.3-10.3L15.29.3 3.6 12l11.7 11.7 1.42-1.4z"></path></svg>
-          </button>
-          <div style="display:flex; align-items:center; flex:1; overflow:hidden;">
-            ${avatarImg}
-            <span style="font-weight:700; font-size:16px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${title}</span>
-          </div>
-          <button class="side-panel__close button-reset icon-container rounded-circle" style="width:32px; height:32px;">
-            <svg height="16" viewBox="0 0 24 24" width="16"><path d="m12 13.41 8.3 8.3 1.4-1.42L13.42 12l8.3-8.3-1.42-1.4-8.3 8.28-8.3-8.3L2.3 3.7l8.28 8.3-8.3 8.3 1.42 1.4z"></path></svg>
-          </button>
-        </div>
-      `;
-    }
-
-    // 템플릿에서 콘텐츠만 추출
-    function getInnerContent(htmlString) {
-      const temp = document.createElement('div');
-      temp.innerHTML = htmlString;
-      const sidePanel = temp.querySelector('.side-panel');
-      return sidePanel ? sidePanel.innerHTML : temp.innerHTML;
-    }
-
-    document.addEventListener('click', function (e) {
-      const panel = e.target.closest('.side-panel');
-      if (!panel) return;
-
-      // 메시지 아이템 클릭 → 상세 대화방
-      const msgItem = e.target.closest('[data-test-id="conversation-list-item"]');
-      if (msgItem) {
-        const name = msgItem.querySelector('.side-panel__msg-name').textContent;
-        const avatar = msgItem.querySelector('.side-panel__msg-avatar').src;
-        panel.innerHTML = `
-          ${getHeaderHTML(name, true, avatar)}
-          <div class="side-panel__body" style="padding:16px; flex:1; display:flex; flex-direction:column; gap:16px; background:#fff;">
-            <div style="display:flex; gap:8px; align-items:flex-end;">
-              <img src="${avatar}" style="width:24px; height:24px; border-radius:50%; margin-bottom:4px;">
-              <div style="background:#efefef; padding:12px 16px; border-radius:18px; max-width:75%; font-size:14px; color:#111; line-height:1.4;">안녕하세요! 작품 잘 봤습니다.</div>
-            </div>
-            <div style="align-self:flex-end; background:#111; color:#fff; padding:12px 16px; border-radius:18px; max-width:75%; font-size:14px; line-height:1.4;">감사합니다! 혹시 어떤 스타일을 선호하시나요?</div>
-          </div>
-          <div style="padding:16px; border-top:1px solid #efefef; background:#fff;">
-            <div style="display:flex; align-items:center; background:#efefef; border-radius:24px; padding:4px 4px 4px 16px; gap:8px">
-              <input type="text" placeholder="메시지 보내기" style="border:none; background:transparent; flex:1; outline:none; font-size:16px; padding:8px 0;">
-              <button class="button-reset chat-send-btn icon-container" style="width:40px; height:40px;">
-                <svg height="20" viewBox="0 0 24 24" width="20" fill="currentColor"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"></path></svg>
-              </button>
-            </div>
-          </div>
-        `;
-        return;
-      }
-
-      // 친구 초대하기 클릭 → 초대 페이지
-      const inviteBtn = e.target.closest('[data-test-id="invite-friends-cta"]');
-      if (inviteBtn) {
-        panel.innerHTML = `
-          ${getHeaderHTML('친구 초대하기')}
-          <div class="side-panel__body" style="padding: 32px 16px; text-align:center;">
-            <div style="width:80px; height:80px; background:#f0d999; border-radius:50%; margin:0 auto 16px; display:flex; align-items:center; justify-content:center;"><svg height="40" viewBox="0 0 24 24" width="40" style="color:#111"><path d="M12 11a5.5 5.5 0 1 0 0-11 5.5 5.5 0 0 0 0 11M8.5 5.5a3.5 3.5 0 1 1 7 0 3.5 3.5 0 0 1-7 0M3 23h9v-2H4.06a8 8 0 0 1 11.05-6.37l.78-1.85A10 10 0 0 0 2 22a1 1 0 0 0 1 1m17-3h4v-2h-4v-4h-2v4h-4v2h4v4h2z"></path></svg></div>
-            <h3 style="font-size:20px; font-weight:700;">친구들과 함께하세요</h3>
-            <p style="color:#767676; font-size:14px; margin-bottom:32px;">프로필 링크를 공유하고 채팅을 시작해보세요.</p>
-            <button onclick="navigator.clipboard.writeText(window.location.origin); showToast('복사되었습니다!')" style="width:100%; padding:14px; border:none; border-radius:24px; background:#f0d999; font-weight:700; cursor:pointer; color:#111;">링크 복사</button>
-          </div>
-        `;
-        return;
-      }
-
-      // 새 메시지 작성(검색바) 클릭 → 검색 페이지
-      const composeBtn = e.target.closest('[data-test-id="compose-new-message-button"]');
-      if (composeBtn) {
-        panel.innerHTML = `
-          ${getHeaderHTML('새 메시지')}
-          <div class="side-panel__body" style="padding: 16px;">
-            <div style="background:#efefef; border-radius:24px; padding:10px 16px; display:flex; align-items:center; gap:12px; margin-bottom:24px;">
-              <svg height="16" viewBox="0 0 24 24" width="16" style="color:#767676"><path d="M17.33 18.74a10 10 0 1 1 1.41-1.41l4.47 4.47-1.41 1.41zM11 3a8 8 0 1 0 0 16 8 8 0 0 0 0-16"></path></svg>
-              <input type="text" id="contactSearch" placeholder="이름 또는 이메일 검색" style="border:none; background:transparent; flex:1; outline:none; font-size:16px;">
-            </div>
-            <div style="text-align:center; padding-top:40px;">
-              <p style="color:#767676; font-size:14px;">검색 결과가 없습니다.</p>
-            </div>
-          </div>
-        `;
-        /*
-        // 검색 결과 있는 버전 (Pinterest 스타일)
-        panel.innerHTML = `
-          ${getHeaderHTML('새 메시지')}
-          <div class="side-panel__body" style="padding: 16px;">
-            <div style="background:#efefef; border-radius:24px; padding:10px 16px; display:flex; align-items:center; gap:12px; margin-bottom:24px;">
-              <svg height="16" viewBox="0 0 24 24" width="16" style="color:#767676"><path d="M17.33 18.74a10 10 0 1 1 1.41-1.41l4.47 4.47-1.41 1.41zM11 3a8 8 0 1 0 0 16 8 8 0 0 0 0-16"></path></svg>
-              <input type="text" id="contactSearch" placeholder="이름 또는 이메일 검색" style="border:none; background:transparent; flex:1; outline:none; font-size:16px;">
-            </div>
-
-            <div style="display:flex; flex-direction:column; gap:8px;">
-              <div style="padding: 8px 12px; font-size:14px; font-weight:600; color:#111;">추천</div>
-
-              <!-- 유저 1 -->
-              <div style="display:flex; align-items:center; gap:12px; padding:8px; border-radius:8px; cursor:pointer; transition: background 0.2s;" onmouseover="this.style.background='#efefef'" onmouseout="this.style.background='transparent'">
-                <img src="https://i.pinimg.com/736x/ea/1f/64/ea1f64668a0af149a3277db9e9e54824.jpg" style="width:48px; height:48px; border-radius:50%; object-fit:cover;">
-                <div style="flex:1;">
-                  <div style="font-weight:600; font-size:16px; color:#111;">이동혁</div>
-                  <div style="font-size:14px; color:#767676;">@hyuck_lee</div>
-                </div>
-              </div>
-
-              <!-- 유저 2 (이미지 없음, 이니셜) -->
-              <div style="display:flex; align-items:center; gap:12px; padding:8px; border-radius:8px; cursor:pointer; transition: background 0.2s;" onmouseover="this.style.background='#efefef'" onmouseout="this.style.background='transparent'">
-                <div style="width:48px; height:48px; border-radius:50%; background:#e60023; color:white; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:20px;">K</div>
-                <div style="flex:1;">
-                  <div style="font-weight:600; font-size:16px; color:#111;">Kang Daniel</div>
-                  <div style="font-size:14px; color:#767676;">@daniel_k</div>
-                </div>
-              </div>
-
-               <!-- 유저 3 -->
-               <div style="display:flex; align-items:center; gap:12px; padding:8px; border-radius:8px; cursor:pointer; transition: background 0.2s;" onmouseover="this.style.background='#efefef'" onmouseout="this.style.background='transparent'">
-                <img src="https://i.pinimg.com/236x/36/57/46/36574620027376a88b50201201460394.jpg" style="width:48px; height:48px; border-radius:50%; object-fit:cover;">
-                <div style="flex:1;">
-                  <div style="font-weight:600; font-size:16px; color:#111;">Jenny Kim</div>
-                  <div style="font-size:14px; color:#767676;">@jennny_k</div>
-                </div>
-              </div>
-
-            </div>
-          </div>
-        `;
-        */
-        setTimeout(() => document.getElementById('contactSearch')?.focus(), 100);
-        return;
-      }
-
-      // 뒤로 가기 버튼 클릭 → 목록 복구
-      const backBtn = e.target.closest('.chat-back-btn');
-      if (backBtn) {
-        panel.innerHTML = getInnerContent(buildMessageListHTML());
-        return;
-      }
-
-      // 닫기 버튼 클릭 (전역 닫기)
-      const closeBtn = e.target.closest('.side-panel__close');
-      if (closeBtn) {
-        panel.remove();
-        resetAllNavIcons();
-        return;
-      }
-    }, true); //
-  })();
+  // WebSocket 연결 및 안읽은 메시지 뱃지
+  msgConnectWebSocket();
+  updateMsgUnreadBadge();
 });
 

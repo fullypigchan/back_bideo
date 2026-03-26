@@ -79,18 +79,18 @@ public class AuctionService {
 
             notificationService.createNotification(
                     highestBid.getMemberId(), null, "AUCTION_END", "AUCTION",
-                    auctionId, "축하합니다! 경매에서 낙찰되었습니다."
+                    auction.getWorkId(), "축하합니다! 경매에서 낙찰되었습니다."
             );
             notificationService.createNotification(
                     auction.getSellerId(), null, "AUCTION_END", "AUCTION",
-                    auctionId, "경매가 종료되어 낙찰자가 결정되었습니다."
+                    auction.getWorkId(), "경매가 종료되어 낙찰자가 결정되었습니다."
             );
         } else {
             auctionDAO.updateStatus(auctionId, "CLOSED");
 
             notificationService.createNotification(
                     auction.getSellerId(), null, "AUCTION_END", "AUCTION",
-                    auctionId, "경매가 입찰 없이 종료되었습니다."
+                    auction.getWorkId(), "경매가 입찰 없이 종료되었습니다."
             );
         }
     }

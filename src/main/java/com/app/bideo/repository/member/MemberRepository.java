@@ -1,10 +1,12 @@
 package com.app.bideo.repository.member;
 
 import com.app.bideo.domain.member.MemberVO;
+import com.app.bideo.dto.member.MemberListResponseDTO;
 import com.app.bideo.mapper.member.MemberMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Repository;
 
+import java.util.List;
 import java.util.Optional;
 
 @Repository
@@ -38,5 +40,9 @@ public class MemberRepository {
 
     public void updatePassword(Long memberId, String password) {
         memberMapper.updatePassword(memberId, password);
+    }
+
+    public List<MemberListResponseDTO> searchByKeyword(String keyword, Long currentMemberId, int limit) {
+        return memberMapper.searchByKeyword(keyword, currentMemberId, limit);
     }
 }
