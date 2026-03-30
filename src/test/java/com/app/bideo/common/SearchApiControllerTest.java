@@ -14,12 +14,14 @@ import java.util.List;
 
 import static org.mockito.BDDMockito.given;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 class SearchApiControllerTest {
 
     private MockMvc mockMvc;
+    private SearchAPIController controller;
     private SearchHistoryService searchHistoryService;
     private GalleryService galleryService;
 
@@ -27,23 +29,25 @@ class SearchApiControllerTest {
     void setUp() {
         searchHistoryService = Mockito.mock(SearchHistoryService.class);
         galleryService = Mockito.mock(GalleryService.class);
-        mockMvc = MockMvcBuilders.standaloneSetup(
-                new SearchAPIController(searchHistoryService, galleryService)
-        ).build();
+        controller = new SearchAPIController(searchHistoryService, galleryService);
+        mockMvc = MockMvcBuilders.standaloneSetup(controller).build();
     }
 
     @Test
-    void trendingKeywordsExposeLightweightPayload() throws Exception {
+    void recentSearchesReturnEmptyListForAnonymousUser() {
+        org.junit.jupiter.api.Assertions.assertEquals(List.of(), controller.recentSearches(null));
+    }
+
+    @Test
+    void trendingEndpointExposesCurrentKeywordPayload() throws Exception {
         given(searchHistoryService.getTrendingKeywords()).willReturn(List.of(
                 TrendingKeywordDTO.builder()
                         .keyword("봄 전시")
-                        .searchCount(7)
                         .build()
         ));
 
         mockMvc.perform(get("/api/search/trending"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$[0].keyword").value("봄 전시"))
-                .andExpect(jsonPath("$[0].searchCount").value(7));
+                .andExpect(jsonPath("$[0].keyword").value("봄 전시"));
     }
 }

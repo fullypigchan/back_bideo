@@ -3,6 +3,7 @@ package com.app.bideo.contest;
 import com.app.bideo.dto.contest.ContestCreateRequestDTO;
 import com.app.bideo.dto.contest.ContestUpdateRequestDTO;
 import com.app.bideo.mapper.contest.ContestMapper;
+import com.app.bideo.service.common.S3FileService;
 import com.app.bideo.service.contest.ContestService;
 import com.app.bideo.service.notification.NotificationService;
 import org.junit.jupiter.api.BeforeEach;
@@ -27,7 +28,11 @@ class ContestValidationServiceTest {
     @BeforeEach
     void setUp() {
         contestMapper = Mockito.mock(ContestMapper.class);
-        contestService = new ContestService(contestMapper, Mockito.mock(NotificationService.class));
+        contestService = new ContestService(
+                contestMapper,
+                Mockito.mock(NotificationService.class),
+                Mockito.mock(S3FileService.class)
+        );
     }
 
     @Test
