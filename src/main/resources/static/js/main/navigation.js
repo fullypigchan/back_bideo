@@ -245,6 +245,7 @@ window.addEventListener('load', () => {
     let activeLabel = '홈';
     const pathname = window.location.pathname;
     if (pathname.indexOf('/contest') === 0) activeLabel = '공모전';
+    if (pathname.indexOf('/dashboard') === 0) activeLabel = '대시보드';
 
     const targetBtn = Array.from(nav.querySelectorAll('a[aria-label], button[aria-label]')).find(function (btn) {
       return btn.getAttribute('aria-label') === activeLabel && btn.querySelector('svg path');
@@ -295,6 +296,41 @@ window.addEventListener('load', () => {
   }
 
   // ─── 계정 드롭다운 ─────────────────────────────────
+  // 계정 드롭다운에서 대시보드 이동과 로그아웃 액션을 연결한다.
+  async function handleAccountAction(action) {
+    if (action === 'dashboard') {
+      window.location.href = '/dashboard';
+      return;
+    }
+
+    if (action !== 'logout') return;
+
+    try {
+      const response = await fetch('/api/auth/logout', {
+        method: 'POST',
+        credentials: 'same-origin'
+      });
+
+      if (!response.ok) {
+        throw new Error('로그아웃 요청 실패');
+      }
+
+      window.location.href = '/';
+    } catch (error) {
+      showToast('로그아웃에 실패했습니다. 잠시 후 다시 시도해주세요.');
+    }
+  }
+
+  // 계정 드롭다운이 생성될 때 버튼 액션을 바인딩한다.
+  function bindAccountDropdownActions(dropdown) {
+    dropdown.querySelectorAll('[data-account-action]').forEach(function (button) {
+      button.addEventListener('click', function (event) {
+        event.stopPropagation();
+        handleAccountAction(button.getAttribute('data-account-action'));
+      });
+    });
+  }
+
   function initAccountDropdown() {
     const btn = document.querySelector('[data-test-id="header-accounts-options-button"]');
     if (!btn) return;
@@ -322,12 +358,13 @@ window.addEventListener('load', () => {
           '</a>' +
           '</div>' +
           '<div class="dropdown-menu__divider"></div>' +
-          '<button class="dropdown-menu__item" onclick="event.stopPropagation(); showToast(\'대시보드 준비 중입니다. 현재는 작품 탐색 기능을 이용할 수 있습니다\')">대시보드</button>' +
+          '<button class="dropdown-menu__item" type="button" data-account-action="dashboard">대시보드</button>' +
           '<button class="dropdown-menu__item" onclick="event.stopPropagation(); showToast(\'문의는 hello@bideo.kr 로 보내주세요\')">고객 지원</button>' +
           '<div class="dropdown-menu__divider"></div>' +
-          '<button class="dropdown-menu__item" onclick="event.stopPropagation()">로그아웃</button>';
+          '<button class="dropdown-menu__item" type="button" data-account-action="logout">로그아웃</button>';
 
       btn.closest('.slot-block').appendChild(dropdown);
+      bindAccountDropdownActions(dropdown);
     });
   }
 
@@ -931,12 +968,12 @@ window.addEventListener('load', () => {
   }
 
   // ─── 설정 패널 ─────────────────────────────────────
+  // 공용 네비게이션의 대시보드 버튼을 실제 화면으로 이동시킨다.
   function initSettingsPanel() {
     const btn = document.querySelector('[aria-label="대시보드"]');
     if (!btn) return;
     btn.addEventListener('click', function (e) {
-      e.stopPropagation();
-      showToast('대시보드 준비 중입니다. 현재는 작품 탐색과 상세 보기 기능을 이용할 수 있습니다');
+      window.location.href = '/dashboard';
     });
   }
 

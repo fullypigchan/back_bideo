@@ -154,13 +154,13 @@
   <!-- Action Buttons: Owner -->
   <div class="action-buttons owner-only">
     <a href="#" class="btn-secondary profile-action-btn" onclick="openEditModal(event)">프로필 편집</a>
-    <a href="#" class="btn-secondary profile-action-btn">대시보드 바로가기</a>
+    <a href="/dashboard" class="btn-secondary profile-action-btn">대시보드 바로가기</a>
   </div>
   <!-- Action Buttons: Viewer -->
   <div class="action-buttons viewer-only">
     <button class="btn-primary profile-action-btn" id="followBtn"
             onclick="toggleFollow()">팔로우</button>
-    <a href="#" class="btn-secondary profile-action-btn">메시지</a>
+    <a href="#" class="btn-secondary profile-action-btn" onclick="event.preventDefault(); document.querySelector('[aria-label=&quot;메시지&quot;]')?.click();">메시지</a>
   </div>
   <!-- Story Highlights -->
   <div class="video-gallery">
