@@ -90,6 +90,10 @@ document.addEventListener("DOMContentLoaded", () => {
             return;
         }
 
+        window.__bideoPendingMessageNotification = detail;
+        if (typeof window.__bideoOpenMessageNotification === "function") {
+            window.__bideoOpenMessageNotification(detail);
+        }
         window.dispatchEvent(new CustomEvent("bideo:open-message-notification", { detail }));
         isOpen = false;
         panel.classList.remove("notification-panel--open");

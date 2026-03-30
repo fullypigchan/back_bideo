@@ -1158,6 +1158,8 @@ window.addEventListener('load', () => {
         });
     }
 
+    window.__bideoOpenMessageNotification = openMessageFromNotification;
+
     btn.addEventListener('click', function (e) {
       e.stopPropagation();
       const existing = document.getElementById('message-menu');
@@ -1220,6 +1222,12 @@ window.addEventListener('load', () => {
     window.addEventListener('bideo:open-message-notification', function(event) {
       openMessageFromNotification(event.detail || {});
     });
+
+    if (window.__bideoPendingMessageNotification) {
+      const pending = window.__bideoPendingMessageNotification;
+      window.__bideoPendingMessageNotification = null;
+      openMessageFromNotification(pending);
+    }
   }
 
   // ─── 새 메시지 패널 (API 검색) ────────────────────────
