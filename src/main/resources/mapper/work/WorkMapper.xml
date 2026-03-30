@@ -123,6 +123,15 @@
         where id = #{id}
     </select>
 
+    <update id="increaseWorkViewCount">
+        update tbl_work
+        set
+            view_count = coalesce(view_count, 0) + 1,
+            updated_datetime = now()
+        where id = #{id}
+          and deleted_datetime is null
+    </update>
+
     <select id="selectWorkDetail" resultMap="workDetailMap">
         select
             w.id,
@@ -393,6 +402,22 @@
             from tbl_auction
             where work_id = #{workId}
               and status = 'ACTIVE'
+              and closing_at > now()
+        )
+    </select>
+
+    <select id="existsEndedLatestAuctionByWorkId" resultType="boolean">
+        select exists (
+            select 1
+            from tbl_auction latest
+            where latest.id = (
+                select a.id
+                from tbl_auction a
+                where a.work_id = #{workId}
+                order by a.created_datetime desc, a.id desc
+                limit 1
+            )
+              and (latest.status != 'ACTIVE' or latest.closing_at &lt;= now())
         )
     </select>
 

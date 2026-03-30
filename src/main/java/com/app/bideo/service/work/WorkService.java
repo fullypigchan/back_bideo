@@ -21,7 +21,6 @@ import com.app.bideo.service.interaction.CommentService;
 import com.app.bideo.service.notification.NotificationService;
 import com.app.bideo.repository.gallery.GalleryDAO;
 import com.app.bideo.repository.work.WorkDAO;
-import com.app.bideo.service.common.S3FileService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -49,7 +48,6 @@ public class WorkService {
     private final BookmarkDAO bookmarkDAO;
     private final CommentService commentService;
     private final NotificationService notificationService;
-    private final S3FileService s3FileService;
 
     // 작품 등록 후 파일/태그까지 함께 저장한다.
     public WorkDetailResponseDTO write(Long memberId, WorkCreateRequestDTO requestDTO, MultipartFile mediaFile) {
@@ -90,7 +88,6 @@ public class WorkService {
         searchDTO.setSize(size);
 
         List<WorkListResponseDTO> list = workDAO.findAll(searchDTO);
-        applyPresignedUrls(list);
         int total = workDAO.findTotal(searchDTO);
         int totalPages = (int) Math.ceil((double) total / size);
 
@@ -112,11 +109,6 @@ public class WorkService {
         detail.setIsLiked(memberId != null && workDAO.existsLike(memberId, id));
         detail.setIsBookmarked(memberId != null && bookmarkDAO.exists(memberId, "WORK", id));
         detail.setHasActiveAuction(workDAO.existsActiveAuctionByWorkId(id));
-        if (detail.getFiles() != null) {
-            detail.getFiles().forEach(file ->
-                    file.setFileUrl(s3FileService.getPresignedUrl(file.getFileUrl()))
-            );
-        }
         if (detail.getComments() != null) {
             detail.getComments().forEach(comment ->
                     comment.setIsLiked(memberId != null && commentService.isLikedByCurrentMember(comment.getId()))
@@ -125,9 +117,10 @@ public class WorkService {
         return detail;
     }
 
-    // 검색 조건을 기준으로 작품 목록을 페이지 형태로 반환한다.
-    private void applyPresignedUrls(List<WorkListResponseDTO> list) {
-        list.forEach(w -> w.setThumbnailUrl(s3FileService.getPresignedUrl(w.getThumbnailUrl())));
+    public void increaseViewCount(Long id) {
+        workDAO.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("work not found"));
+        workDAO.increaseViewCount(id);
     }
 
     // 프로필 화면에 표시할 작성자 작품 목록 조회
@@ -145,9 +138,7 @@ public class WorkService {
         searchDTO.setGalleryId(galleryId);
         searchDTO.setPage(1);
         searchDTO.setSize(50);
-        List<WorkListResponseDTO> list = workDAO.findAll(searchDTO);
-        applyPresignedUrls(list);
-        return list;
+        return workDAO.findAll(searchDTO);
     }
 
     // 기존 파일/태그를 정리한 뒤 요청 데이터 기준으로 다시 구성한다.
@@ -432,23 +423,28 @@ public class WorkService {
         return null;
     }
 
+    // 업로드한 파일을 data URL 형태로 DB에 직접 저장한다.
     private void saveMediaFile(Long workId, MultipartFile mediaFile) {
         if (mediaFile == null || mediaFile.isEmpty()) {
             return;
         }
 
-        String contentType = mediaFile.getContentType() != null ? mediaFile.getContentType() : "application/octet-stream";
-        String fileUrl = s3FileService.upload("works/" + workId, mediaFile);
+        try {
+            String contentType = mediaFile.getContentType() != null ? mediaFile.getContentType() : "application/octet-stream";
+            String base64 = Base64.getEncoder().encodeToString(mediaFile.getBytes());
 
-        workDAO.saveFile(
-                WorkFileVO.builder()
-                        .workId(workId)
-                        .fileUrl(fileUrl)
-                        .fileType(contentType)
-                        .fileSize((int) mediaFile.getSize())
-                        .sortOrder(0)
-                        .build()
-        );
+            workDAO.saveFile(
+                    WorkFileVO.builder()
+                            .workId(workId)
+                            .fileUrl("data:" + contentType + ";base64," + base64)
+                            .fileType(contentType)
+                            .fileSize((int) mediaFile.getSize())
+                            .sortOrder(0)
+                            .build()
+            );
+        } catch (IOException e) {
+            throw new RuntimeException("media upload failed", e);
+        }
     }
 
     private String resolveCategory(String category, MultipartFile mediaFile) {

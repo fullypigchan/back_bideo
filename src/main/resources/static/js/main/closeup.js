@@ -306,6 +306,35 @@ window.addEventListener('load', () => {
     } finally {
       isGalleryBookmarkPending = false;
     }
+
+    const card = btn.closest('[data-id]');
+    const rawId = card ? card.getAttribute('data-id') : (activeCloseupPinId || null);
+    if (!rawId || rawId === 'undefined' || rawId === 'null') return;
+
+    const numericId = Number(rawId.replace(/\D/g, ''));
+    if (isNaN(numericId) || numericId === 0) return;
+
+    const targetType = rawId.startsWith('gallery-') ? 'GALLERY' : 'WORK';
+
+    fetch("/api/bookmarks", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ targetType: targetType, targetId: numericId })
+    })
+    .then(res => res.json())
+    .then(data => {
+      const isCloseup = btn.classList.contains('closeup__save-btn');
+      const savedClass = isCloseup ? 'closeup__save-btn--saved' : 'art-gallery-card__save-btn--saved';
+      if (data.bookmarked) {
+        btn.classList.add(savedClass);
+        btn.textContent = '찜 완료';
+      } else {
+        btn.classList.remove(savedClass);
+        btn.textContent = '찜';
+      }
+    })
+    .catch(() => {});
   }
 
   async function toggleCloseupLike(btn) {

@@ -33,6 +33,8 @@ public interface WorkMapper {
 
     WorkDTO selectWork(@Param("id") Long id);
 
+    int increaseWorkViewCount(@Param("id") Long id);
+
     WorkDetailResponseDTO selectWorkDetail(@Param("id") Long id);
 
     List<WorkListResponseDTO> selectWorkList(WorkSearchDTO searchDTO);
@@ -64,6 +66,8 @@ public interface WorkMapper {
     List<CommentResponseDTO> selectWorkCommentsByWorkId(@Param("workId") Long workId);
 
     boolean existsActiveAuctionByWorkId(@Param("workId") Long workId);
+
+    boolean existsEndedLatestAuctionByWorkId(@Param("workId") Long workId);
 
     boolean existsWorkLike(@Param("memberId") Long memberId, @Param("workId") Long workId);
 
