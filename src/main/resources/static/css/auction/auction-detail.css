@@ -242,7 +242,7 @@
             padding: 14px 18px 12px;
             border-bottom: 1px solid #f0f0f0;
             background: #111;
-            color: #fff;
+            color: #f0d999;
         }
         .live-badge {
             display: flex; align-items: center; gap: 6px;

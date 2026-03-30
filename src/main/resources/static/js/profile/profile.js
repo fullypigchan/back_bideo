@@ -18,6 +18,8 @@ let galleryEditExistingCoverUrl = null;
 let selectedShareRecipients = [];
 let isWorkLikeRequestPending = false;
 let isGalleryLikeRequestPending = false;
+let auctionRegisterDeadlineHours = 0;
+let isAuctionRegisterSubmitting = false;
 const workEditGallerySelect = document.getElementById('workEditGallerySelect');
 const workEditGallerySelectWrap = document.getElementById('workEditGallerySelectWrap');
 const workEditGallerySelectTrigger = document.getElementById('workEditGallerySelectTrigger');
@@ -338,7 +340,158 @@ function requestWorkAuction() {
     return;
   }
 
+  const isOwnWork = currentMemberId !== null && currentWorkDetail.memberId === currentMemberId;
+  if (isOwnWork || IS_OWNER) {
+    openAuctionRegisterModal();
+    return;
+  }
+
   alert(`"${currentWorkDetail.title || '작품'}" 경매요청을 보냈습니다.`);
+}
+
+function formatAuctionRegisterDeadline(hours) {
+  if (hours <= 0) return '0시간';
+  const days = Math.floor(hours / 24);
+  const remainHours = hours % 24;
+
+  return [
+    days > 0 ? `${days}일` : '',
+    remainHours > 0 ? `${remainHours}시간` : ''
+  ].filter(Boolean).join(' ');
+}
+
+function syncAuctionRegisterSettlement() {
+  const priceInput = document.getElementById('auctionRegisterPriceInput');
+  const feeAmount = document.getElementById('auctionRegisterFeeAmount');
+  const settlementAmount = document.getElementById('auctionRegisterSettlementAmount');
+  if (!priceInput || !feeAmount || !settlementAmount) return;
+
+  const rawPrice = Number((priceInput.value || '').replace(/,/g, '')) || 0;
+  const fee = Math.round(rawPrice * 0.10);
+  const settlement = Math.max(0, rawPrice - fee);
+
+  feeAmount.textContent = fee > 0 ? `-${fee.toLocaleString('ko-KR')}원` : '0원';
+  settlementAmount.textContent = `${settlement.toLocaleString('ko-KR')}원`;
+}
+
+function syncAuctionRegisterDeadlineButtons() {
+  const label = document.getElementById('auctionRegisterDeadlineLabel');
+  if (label) {
+    label.textContent = formatAuctionRegisterDeadline(auctionRegisterDeadlineHours);
+  }
+
+  document.querySelectorAll('#auctionRegisterModal .ar-deadline-btn').forEach((button) => {
+    const buttonHours = Number(button.dataset.hours || 0);
+    button.classList.toggle('ar-deadline-btn--active', buttonHours === auctionRegisterDeadlineHours);
+  });
+}
+
+function openAuctionRegisterModal() {
+  if (!currentWorkDetail?.id) return;
+
+  const imageElement = document.getElementById('auctionRegisterImage');
+  const titleElement = document.getElementById('auctionRegisterTitle');
+  const subtitleElement = document.getElementById('auctionRegisterSubtitle');
+  const priceInput = document.getElementById('auctionRegisterPriceInput');
+  const thumbnailUrl = currentWorkDetail.files?.[0]?.fileUrl
+    || currentWorkDetail.thumbnailUrl
+    || '/images/BIDEO_LOGO/BIDEO_favicon.png';
+  const defaultPrice = Number(currentWorkDetail.price ?? 0);
+
+  if (imageElement) imageElement.src = thumbnailUrl;
+  if (titleElement) titleElement.textContent = currentWorkDetail.title || '작품 제목';
+  if (subtitleElement) {
+    subtitleElement.textContent = currentWorkDetail.description?.trim() || '경매로 등록할 작품을 확인해주세요.';
+  }
+  if (priceInput) {
+    priceInput.value = defaultPrice > 0 ? defaultPrice.toLocaleString('ko-KR') : '';
+  }
+
+  auctionRegisterDeadlineHours = 0;
+  syncAuctionRegisterSettlement();
+  syncAuctionRegisterDeadlineButtons();
+  document.getElementById('auctionRegisterModal')?.classList.add('active');
+}
+
+async function submitAuctionRegister() {
+  if (!currentWorkDetail?.id || isAuctionRegisterSubmitting) return;
+
+  const priceInput = document.getElementById('auctionRegisterPriceInput');
+  const submitButton = document.getElementById('auctionRegisterSubmitButton');
+  const rawPrice = Number((priceInput?.value || '').replace(/,/g, ''));
+
+  if (!rawPrice || rawPrice <= 0) {
+    alert('판매 희망가를 입력해주세요.');
+    return;
+  }
+
+  if (auctionRegisterDeadlineHours <= 0) {
+    alert('입찰 마감기한을 선택해주세요.');
+    return;
+  }
+
+  isAuctionRegisterSubmitting = true;
+  if (submitButton) {
+    submitButton.disabled = true;
+    submitButton.textContent = '등록 중...';
+  }
+
+  try {
+    const response = await fetch('/api/auctions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        workId: currentWorkDetail.id,
+        askingPrice: rawPrice,
+        startingPrice: rawPrice,
+        deadlineHours: auctionRegisterDeadlineHours
+      })
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(errorText || '경매 등록에 실패했습니다.');
+    }
+
+    const auction = await response.json();
+    currentWorkDetail.hasActiveAuction = true;
+    currentWorkDetail.price = null;
+
+    const auctionButton = document.getElementById('workDetailAuctionButton');
+    const auctionLabel = document.getElementById('workDetailAuctionLabel');
+    const priceElement = document.getElementById('workDetailPrice');
+
+    if (auctionButton) {
+      auctionButton.disabled = false;
+      auctionButton.classList.remove('is-disabled');
+      auctionButton.title = '경매중';
+      auctionButton.setAttribute('aria-label', '경매중');
+    }
+
+    if (auctionLabel) {
+      auctionLabel.textContent = '경매중';
+    }
+
+    if (priceElement) {
+      priceElement.textContent = '';
+      priceElement.style.display = 'none';
+    }
+
+    closeModal('auctionRegisterModal');
+    window.setTimeout(() => {
+      window.location.href = `/auction/auction-detail/${auction.workId}`;
+    }, 120);
+  } catch (error) {
+    alert(error.message || '경매 등록에 실패했습니다.');
+  } finally {
+    isAuctionRegisterSubmitting = false;
+    if (submitButton) {
+      submitButton.disabled = false;
+      submitButton.textContent = '등록하기';
+    }
+  }
 }
 
 function renderWorkComments(comments) {
@@ -483,9 +636,8 @@ async function renderWorkDetailModal(work) {
     auctionWrap.style.display = 'flex';
   }
   if (auctionButton) {
-    const canOpenAuctionDetail = Boolean(work.hasActiveAuction);
-    auctionButton.disabled = !canOpenAuctionDetail && !isViewerWork;
-    auctionButton.classList.toggle('is-disabled', !canOpenAuctionDetail && !isViewerWork);
+    auctionButton.disabled = false;
+    auctionButton.classList.toggle('is-disabled', false);
     const auctionText = work.hasActiveAuction
       ? (isOwnWork ? '경매중' : '경매참여하기')
       : (isViewerWork ? '경매요청하기' : '경매하기');
@@ -595,6 +747,9 @@ function closeModal(id, e) {
     modal.classList.remove('active');
     if (id === 'workDetailModal') {
       resetWorkDetailSheetSize();
+    }
+    if (id === 'auctionRegisterModal') {
+      auctionRegisterDeadlineHours = 0;
     }
   }
 }
@@ -1794,6 +1949,9 @@ document.addEventListener('DOMContentLoaded', () => {
   const workShareRecipientList = document.getElementById('workShareRecipientList');
   const workShareSelectedList = document.getElementById('workShareSelectedList');
   const workShareSendButton = document.getElementById('workShareSendButton');
+  const auctionRegisterPriceInput = document.getElementById('auctionRegisterPriceInput');
+  const auctionRegisterDeadlineReset = document.getElementById('auctionRegisterDeadlineReset');
+  const auctionRegisterSubmitButton = document.getElementById('auctionRegisterSubmitButton');
 
   if (workEditUploadArea && workEditFileInput) {
     workEditUploadArea.addEventListener('click', (event) => {
@@ -2009,13 +2167,28 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
-    const isViewerWork = currentWorkDetail && currentMemberId !== null
-      ? currentWorkDetail.memberId !== currentMemberId
-      : !IS_OWNER;
-
-    if (!isViewerWork) return;
     requestWorkAuction();
   });
+
+  auctionRegisterPriceInput?.addEventListener('input', (event) => {
+    const digitsOnly = event.target.value.replace(/,/g, '').replace(/\D/g, '');
+    event.target.value = digitsOnly ? Number(digitsOnly).toLocaleString('ko-KR') : '';
+    syncAuctionRegisterSettlement();
+  });
+
+  document.querySelectorAll('#auctionRegisterModal .ar-deadline-btn').forEach((button) => {
+    button.addEventListener('click', () => {
+      auctionRegisterDeadlineHours = Number(button.dataset.hours || 0);
+      syncAuctionRegisterDeadlineButtons();
+    });
+  });
+
+  auctionRegisterDeadlineReset?.addEventListener('click', () => {
+    auctionRegisterDeadlineHours = 0;
+    syncAuctionRegisterDeadlineButtons();
+  });
+
+  auctionRegisterSubmitButton?.addEventListener('click', submitAuctionRegister);
 
   document.getElementById('galleryCloseupCommentsContainer')?.addEventListener('click', (event) => {
     const toggleButton = event.target.closest('[data-comments-toggle="gallery"]');
@@ -2135,7 +2308,7 @@ document.addEventListener('DOMContentLoaded', () => {
 document.addEventListener('keydown', (e) => {
   if (e.key !== 'Escape') return;
 
-  const upperModals = ['badgeModal', 'nicknameModal', 'followModal', 'passwordModal', 'workDetailModal', 'workShareModal', 'galleryListModal', 'galleryCloseupModal', 'galleryActionModal', 'galleryEditModal'];
+  const upperModals = ['badgeModal', 'nicknameModal', 'followModal', 'passwordModal', 'workDetailModal', 'workShareModal', 'galleryListModal', 'galleryCloseupModal', 'galleryActionModal', 'galleryEditModal', 'auctionRegisterModal'];
   for (const id of upperModals) {
     const el = document.getElementById(id);
     if (el && el.classList.contains('active')) {

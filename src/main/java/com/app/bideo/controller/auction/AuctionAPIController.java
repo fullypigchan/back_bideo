@@ -31,6 +31,13 @@ public class AuctionAPIController {
         return ResponseEntity.ok(auctionService.getAuctionList(searchDTO));
     }
 
+    @PostMapping
+    public ResponseEntity<AuctionDetailResponseDTO> createAuction(
+            @AuthenticationPrincipal CustomUserDetails userDetails,
+            @RequestBody AuctionCreateRequestDTO requestDTO) {
+        return ResponseEntity.ok(auctionService.createAuction(userDetails.getId(), requestDTO));
+    }
+
     @GetMapping("/{id}")
     public ResponseEntity<AuctionDetailResponseDTO> getAuctionDetail(
             @PathVariable Long id,
@@ -60,5 +67,11 @@ public class AuctionAPIController {
             @PathVariable Long id,
             @RequestParam(defaultValue = "0") int page) {
         return ResponseEntity.ok(bidService.getBidsByAuction(id, page));
+    }
+
+    @GetMapping("/my-bids")
+    public ResponseEntity<List<MyBidHistoryResponseDTO>> getMyClosedBids(
+            @AuthenticationPrincipal CustomUserDetails userDetails) {
+        return ResponseEntity.ok(bidService.getClosedBidHistories(userDetails.getId()));
     }
 }

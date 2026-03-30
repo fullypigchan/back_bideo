@@ -157,11 +157,11 @@
         <div class="bid-input-section">
             <div class="bid-input-label">입찰 금액 설정</div>
             <div class="bid-ctrl-wrap">
-                <button class="bid-ctrl-btn" onclick="changeBid(-500000)">−</button>
+                <button class="bid-ctrl-btn" type="button" onclick="changeBid(-1)">−</button>
                 <div class="bid-amount-display">
                     <span id="bidDisplay">0</span>원
                 </div>
-                <button class="bid-ctrl-btn" onclick="changeBid(500000)">+</button>
+                <button class="bid-ctrl-btn" type="button" onclick="changeBid(1)">+</button>
             </div>
             <div class="bid-unit-row">
                 <div class="bid-unit-info" id="auctionBidUnit">입찰 단위 <strong>10,000원</strong></div>
@@ -171,7 +171,7 @@
 
         <!-- 버튼 영역 -->
         <div class="bid-btn-section">
-            <button class="btn-bid-main" onclick="doBid()">입찰하기</button>
+            <button class="btn-bid-main" id="bidActionBtn" type="button" onclick="doBid()">입찰하기</button>
             <div class="btn-row-2">
                 <button class="btn-sub">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -179,9 +179,15 @@
                     </svg>
                     찜하기
                 </button>
-                <button class="btn-sub">
-                    <svg viewBox="0 0 24 24"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
-                    문의하기
+                <button class="btn-sub" id="deleteWorkBtn" type="button" onclick="deleteAuctionWork()" hidden>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M3 6h18"></path>
+                        <path d="M8 6V4h8v2"></path>
+                        <path d="M19 6l-1 14H6L5 6"></path>
+                        <path d="M10 11v6"></path>
+                        <path d="M14 11v6"></path>
+                    </svg>
+                    삭제하기
                 </button>
             </div>
         </div>

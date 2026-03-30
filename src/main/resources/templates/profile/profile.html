@@ -8,6 +8,7 @@
 <link rel="icon" type="image/png" href=/images/BIDEO_LOGO/BIDEO_favicon.png>
 <link rel="stylesheet" href="/css/common/global.css">
 <link rel="stylesheet" href="/css/common/buttons.css">
+<link rel="stylesheet" href="/css/auction/auction-register.css">
 <link rel="stylesheet" href="/css/profile/profile.css">
   
 </head>
@@ -286,6 +287,87 @@
     <div class="work-share-modal__footer">
       <input class="work-share-modal__message" id="workShareMessageInput" type="text" placeholder="메시지 쓰기..." autocomplete="off">
       <button class="work-share-modal__send" id="workShareSendButton" type="button">보내기</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay auction-register-modal-overlay" id="auctionRegisterModal" onclick="closeModal('auctionRegisterModal', event)">
+  <div class="ar-modal auction-register-sheet" role="dialog" aria-label="경매 등록">
+    <div class="ar-modal-handle"></div>
+    <div class="ar-modal-header">
+      <button class="ar-close-btn" type="button" aria-label="닫기" onclick="closeModal('auctionRegisterModal')">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+          <line x1="18" y1="6" x2="6" y2="18"/>
+          <line x1="6" y1="6" x2="18" y2="18"/>
+        </svg>
+      </button>
+      <h2 class="ar-title">경매 등록하기</h2>
+      <div class="auction-register-sheet__spacer"></div>
+    </div>
+    <div class="ar-modal-body">
+      <div class="ar-product-card">
+        <div class="ar-product-img-wrap">
+          <img class="ar-product-img" id="auctionRegisterImage" src="/images/BIDEO_LOGO/BIDEO_favicon.png" alt="작품 이미지">
+        </div>
+        <div class="ar-product-info">
+          <p class="ar-product-name-ko" id="auctionRegisterTitle">작품 제목</p>
+          <p class="ar-product-name-en" id="auctionRegisterSubtitle">경매로 등록할 작품을 확인해주세요.</p>
+        </div>
+      </div>
+
+      <div class="ar-section">
+        <div class="ar-section-row">
+          <span class="ar-section-label">판매 희망가</span>
+          <div class="ar-price-input-wrap">
+            <input class="ar-price-input" type="text" id="auctionRegisterPriceInput" placeholder="가격 입력" autocomplete="off">
+            <span class="ar-price-unit">원</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="ar-fee-section">
+        <div class="ar-fee-row">
+          <span class="ar-fee-label">
+            수수료
+            <button class="ar-tooltip-btn" type="button" title="수수료 안내">?</button>
+          </span>
+          <span class="ar-fee-value ar-fee-value--minus" id="auctionRegisterFeeAmount">0원</span>
+        </div>
+      </div>
+
+      <div class="ar-section ar-deadline-section">
+        <div class="ar-section-header">
+          <span class="ar-section-title">입찰 마감기한</span>
+          <div class="ar-deadline-selected-wrap">
+            <span class="ar-deadline-selected" id="auctionRegisterDeadlineLabel">0시간</span>
+            <button class="ar-deadline-reset" type="button" id="auctionRegisterDeadlineReset">초기화</button>
+          </div>
+        </div>
+        <div class="ar-deadline-btns">
+          <button class="ar-deadline-btn" type="button" data-hours="1">1시간</button>
+          <button class="ar-deadline-btn" type="button" data-hours="3">3시간</button>
+          <button class="ar-deadline-btn" type="button" data-hours="6">6시간</button>
+          <button class="ar-deadline-btn" type="button" data-hours="12">12시간</button>
+          <button class="ar-deadline-btn" type="button" data-hours="24">1일</button>
+        </div>
+      </div>
+
+      <div class="ar-settlement-section">
+        <div class="ar-settlement-row">
+          <span class="ar-settlement-label">이용약관</span>
+          <span class="ar-settlement-terms">희망가의 70%를 넘으면 취소할 수 없습니다.</span>
+        </div>
+      </div>
+
+      <div class="ar-settlement-section">
+        <div class="ar-settlement-row">
+          <span class="ar-settlement-label">정산금액</span>
+          <span class="ar-settlement-value" id="auctionRegisterSettlementAmount">0원</span>
+        </div>
+      </div>
+    </div>
+    <div class="ar-modal-footer">
+      <button class="ar-submit-btn" id="auctionRegisterSubmitButton" type="button">등록하기</button>
     </div>
   </div>
 </div>

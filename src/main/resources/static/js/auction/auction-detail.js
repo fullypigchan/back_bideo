@@ -1,11 +1,16 @@
 const auctionDetailWorkId = document.body?.dataset.workId;
 const auctionMainMedia = document.getElementById("auctionMainMedia");
 const auctionThumbStrip = document.getElementById("auctionThumbStrip");
+const deleteWorkButton = document.getElementById("deleteWorkBtn");
+const bidActionButton = document.getElementById("bidActionBtn");
 
 let auctionDetailState = {
     auction: null,
     work: null,
-    selectedFileIndex: 0
+    selectedFileIndex: 0,
+    currentMemberId: null,
+    countdownTimerId: null,
+    isBidSubmitting: false
 };
 
 function formatPrice(value) {
@@ -108,6 +113,34 @@ function renderWorkDetail(work) {
     auctionDetailState.selectedFileIndex = 0;
     renderMainMedia(files[0]);
     renderThumbnails(files);
+    syncDeleteButtonVisibility();
+}
+
+function syncDeleteButtonVisibility() {
+    if (!deleteWorkButton) return;
+
+    const isOwner = Boolean(
+        auctionDetailState.currentMemberId &&
+        auctionDetailState.work?.memberId &&
+        auctionDetailState.currentMemberId === auctionDetailState.work.memberId
+    );
+
+    deleteWorkButton.hidden = !isOwner;
+}
+
+async function loadCurrentMember() {
+    try {
+        const response = await fetch("/api/auth/me");
+        if (!response.ok) {
+            auctionDetailState.currentMemberId = null;
+            return;
+        }
+
+        const member = await response.json();
+        auctionDetailState.currentMemberId = member?.id ?? null;
+    } catch (error) {
+        auctionDetailState.currentMemberId = null;
+    }
 }
 
 function renderAuctionDetail(auction) {
@@ -129,7 +162,34 @@ function renderAuctionDetail(auction) {
     window.MIN_BID = resolvedCurrentPrice + bidIncrement;
     document.getElementById("bidDisplay").textContent = formatPrice(window.bidVal);
 
+    syncBidActionState();
     startCountdown(auction.closingAt);
+}
+
+function syncBidActionState() {
+    if (!bidActionButton) return;
+
+    const auction = auctionDetailState.auction;
+    const work = auctionDetailState.work;
+    const currentMemberId = auctionDetailState.currentMemberId;
+
+    const isOwner = Boolean(currentMemberId && work?.memberId && currentMemberId === work.memberId);
+    const isClosed = Boolean(auction?.closingAt && new Date(auction.closingAt).getTime() <= Date.now());
+
+    if (isOwner) {
+        bidActionButton.disabled = true;
+        bidActionButton.textContent = "내 작품은 입찰 불가";
+        return;
+    }
+
+    if (isClosed || auction?.status !== "ACTIVE") {
+        bidActionButton.disabled = true;
+        bidActionButton.textContent = "경매 종료";
+        return;
+    }
+
+    bidActionButton.disabled = false;
+    bidActionButton.textContent = "입찰하기";
 }
 
 function startCountdown(closingAt) {
@@ -138,12 +198,21 @@ function startCountdown(closingAt) {
         return;
     }
 
+    if (auctionDetailState.countdownTimerId) {
+        window.clearInterval(auctionDetailState.countdownTimerId);
+    }
+
     const update = () => {
         const diff = endTime.getTime() - Date.now();
         if (diff <= 0) {
             ["cdDay", "cdHour", "cdMin", "cdSec"].forEach((id) => {
                 document.getElementById(id).textContent = "00";
             });
+            syncBidActionState();
+            if (auctionDetailState.countdownTimerId) {
+                window.clearInterval(auctionDetailState.countdownTimerId);
+                auctionDetailState.countdownTimerId = null;
+            }
             return;
         }
 
@@ -158,7 +227,7 @@ function startCountdown(closingAt) {
     };
 
     update();
-    window.setInterval(update, 1000);
+    auctionDetailState.countdownTimerId = window.setInterval(update, 1000);
 }
 
 async function initializeAuctionDetail() {
@@ -185,6 +254,8 @@ async function initializeAuctionDetail() {
             auctionResponse.json()
         ]);
 
+        await loadCurrentMember();
+
         auctionDetailState.work = work;
         auctionDetailState.auction = auction;
 
@@ -195,15 +266,72 @@ async function initializeAuctionDetail() {
     }
 }
 
-function changeBid(delta) {
-    const next = window.bidVal + delta;
+function changeBid(direction) {
+    const step = Number(window.BID_UNIT || 0);
+    if (!step) return;
+
+    const next = window.bidVal + (step * direction);
     if (next < window.MIN_BID) return;
     window.bidVal = next;
     document.getElementById("bidDisplay").textContent = formatPrice(window.bidVal);
 }
 
-function doBid() {
-    alert("입찰 기능은 아직 연결되지 않았습니다.");
+async function doBid() {
+    if (!auctionDetailState.auction?.id) {
+        alert("경매 정보를 찾을 수 없습니다.");
+        return;
+    }
+    if (!bidActionButton || bidActionButton.disabled) {
+        return;
+    }
+    if (!auctionDetailState.currentMemberId) {
+        alert("로그인 후 입찰할 수 있습니다.");
+        return;
+    }
+    if (auctionDetailState.isBidSubmitting) {
+        return;
+    }
+
+    const confirmed = window.confirm(`${formatPrice(window.bidVal)}원으로 입찰하시겠습니까?`);
+    if (!confirmed) {
+        return;
+    }
+
+    auctionDetailState.isBidSubmitting = true;
+    bidActionButton.disabled = true;
+    bidActionButton.textContent = "입찰 중...";
+
+    try {
+        const response = await fetch(`/api/auctions/${auctionDetailState.auction.id}/bids`, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+                bidPrice: window.bidVal
+            })
+        });
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(errorText || "입찰에 실패했습니다.");
+        }
+
+        const result = await response.json();
+        const nextPrice = Number(result?.bidPrice || window.bidVal);
+        auctionDetailState.auction.currentPrice = nextPrice;
+        auctionDetailState.auction.bidCount = Number(auctionDetailState.auction.bidCount || 0) + 1;
+        renderAuctionDetail(auctionDetailState.auction);
+        alert("입찰이 완료되었습니다.");
+    } catch (error) {
+        alert(error.message || "입찰에 실패했습니다.");
+        syncBidActionState();
+    } finally {
+        auctionDetailState.isBidSubmitting = false;
+        if (!bidActionButton.disabled) {
+            bidActionButton.textContent = "입찰하기";
+        }
+    }
 }
 
 function toggleLike(btn) {
@@ -223,6 +351,33 @@ function toggleLike(btn) {
     btn.style.color = "";
     btn.style.borderColor = "";
     countEl.textContent = Math.max(0, currentCount - 1).toLocaleString("ko-KR");
+}
+
+async function deleteAuctionWork() {
+    if (!auctionDetailState.work?.id) {
+        alert("삭제할 작품 정보를 찾을 수 없습니다.");
+        return;
+    }
+
+    const confirmed = window.confirm("이 작품을 삭제하시겠습니까?");
+    if (!confirmed) {
+        return;
+    }
+
+    try {
+        const response = await fetch(`/api/works/${auctionDetailState.work.id}`, {
+            method: "DELETE"
+        });
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(errorText || "작품 삭제에 실패했습니다.");
+        }
+
+        window.location.href = "/profile/profile";
+    } catch (error) {
+        alert(error.message || "작품 삭제에 실패했습니다.");
+    }
 }
 
 initializeAuctionDetail();

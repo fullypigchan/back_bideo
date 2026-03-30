@@ -4,6 +4,7 @@ import com.app.bideo.domain.auction.AuctionVO;
 import com.app.bideo.domain.auction.BidVO;
 import com.app.bideo.dto.auction.BidRequestDTO;
 import com.app.bideo.dto.auction.BidResponseDTO;
+import com.app.bideo.dto.auction.MyBidHistoryResponseDTO;
 import com.app.bideo.repository.auction.AuctionDAO;
 import com.app.bideo.repository.auction.BidDAO;
 import com.app.bideo.service.notification.NotificationService;
@@ -12,6 +13,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.time.LocalDateTime;
 
 @Service
 @RequiredArgsConstructor
@@ -31,6 +33,9 @@ public class BidService {
         }
         if (!"ACTIVE".equals(auction.getStatus())) {
             throw new IllegalStateException("종료된 경매입니다.");
+        }
+        if (auction.getClosingAt() != null && auction.getClosingAt().isBefore(LocalDateTime.now())) {
+            throw new IllegalStateException("경매가 종료되었습니다.");
         }
         if (auction.getSellerId().equals(memberId)) {
             throw new IllegalArgumentException("자신의 경매에는 입찰할 수 없습니다.");
@@ -80,5 +85,10 @@ public class BidService {
     @Transactional(readOnly = true)
     public List<BidResponseDTO> getBidsByAuction(Long auctionId, int page) {
         return bidDAO.findByAuctionId(auctionId, page * PAGE_SIZE, PAGE_SIZE);
+    }
+
+    @Transactional(readOnly = true)
+    public List<MyBidHistoryResponseDTO> getClosedBidHistories(Long memberId) {
+        return bidDAO.findClosedBidHistoriesByMemberId(memberId);
     }
 }

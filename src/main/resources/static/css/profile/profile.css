@@ -2494,6 +2494,44 @@ body[data-owner="true"] .profile-avatar {
   z-index: 3200;
 }
 
+.auction-register-modal-overlay {
+  z-index: 3201;
+}
+
+.auction-register-modal-overlay .auction-register-sheet {
+  position: relative;
+  left: auto;
+  bottom: auto;
+  transform: none;
+  width: min(520px, calc(100vw - 32px));
+  max-width: calc(100vw - 32px);
+  max-height: calc(100vh - 32px);
+  border-radius: 20px;
+  animation: avatarModalIn 0.2s ease-out;
+}
+
+.auction-register-modal-overlay .ar-modal-body {
+  padding-bottom: 12px;
+}
+
+.auction-register-sheet__spacer {
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+}
+
+.auction-register-modal-overlay .ar-deadline-btn--active {
+  border-color: #111;
+  background: #111;
+  color: #fff;
+}
+
+.auction-register-modal-overlay .ar-settlement-terms {
+  font-size: 12px;
+  color: rgba(34, 34, 34, 0.7);
+  text-align: right;
+}
+
 .work-share-modal {
   width: 520px;
   max-width: calc(100vw - 32px);
@@ -2900,6 +2938,11 @@ body[data-owner="true"] .profile-avatar {
     max-height: 100vh;
     height: 100vh;
     border-radius: 0;
+  }
+
+  .auction-register-modal-overlay .auction-register-sheet {
+    width: calc(100vw - 24px);
+    max-width: calc(100vw - 24px);
   }
 
   .work-share-modal__receiver {

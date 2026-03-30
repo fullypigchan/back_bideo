@@ -2,6 +2,7 @@ package com.app.bideo.mapper.auction;
 
 import com.app.bideo.domain.auction.BidVO;
 import com.app.bideo.dto.auction.BidResponseDTO;
+import com.app.bideo.dto.auction.MyBidHistoryResponseDTO;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
@@ -20,4 +21,6 @@ public interface BidMapper {
     BidResponseDTO selectHighestBid(@Param("auctionId") Long auctionId);
 
     List<Long> selectBidderIds(@Param("auctionId") Long auctionId);
+
+    List<MyBidHistoryResponseDTO> selectClosedBidHistoriesByMemberId(@Param("memberId") Long memberId);
 }
